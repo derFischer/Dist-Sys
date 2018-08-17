@@ -1,2 +1,4 @@
-# DS6.824
-labs of DS - MIT 6.824
+# MIT 6.824
+目前完成:
+- lab 2 √
+- lab 3 √
