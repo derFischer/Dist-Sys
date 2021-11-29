@@ -82,25 +82,35 @@ func (kv *KVServer) Get(args *Common.GetArgs, reply *Common.GetReply) {
 		}
 	}
 
-	var ApplyCh = make(chan Common.Recent, 1)
-	entry := Common.Op{Op: GET, Key: args.Key, ClientId: args.ClientId, ReqId: args.ReqId, ApplyChan: ApplyCh}
+	//var ApplyCh = make(chan recent, 1)
+	//entry := Op{Op: GET, Key: args.Key, ClientId: args.ClientId, ReqId: args.ReqId, ApplyChan: ApplyCh}
 
-	isLeader := kv.AppendEntryToLog(entry)
+	//isLeader := kv.AppendEntryToLog(entry)
+	_, isLeader := kv.rf.GetState()
 	if !isLeader {
 		reply.WrongLeader = true
 		return
 	} else {
 		reply.WrongLeader = false
-		for {
-			select {
-			case tmp := <-ApplyCh:
-				reply.Err = tmp.Err
-				if reply.Err == Common.OK {
-					reply.Value = tmp.Result
-				}
-				return
-			}
+		v, ok := kv.record[args.Key]
+		if ok {
+			reply.Value = v
+			reply.Err = Common.OK
+		} else {
+			reply.Value = ""
+			reply.Err = Common.ErrNoKey
 		}
+
+		//for {
+		//	select {
+		//	case tmp := <-ApplyCh:
+		//		reply.Err = tmp.Err
+		//		if reply.Err == OK {
+		//			reply.Value = tmp.Result
+		//		}
+		//		return
+		//	}
+		//}
 	}
 }
 

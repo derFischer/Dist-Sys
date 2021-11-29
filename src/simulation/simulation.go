@@ -221,7 +221,7 @@ func (s *Simulation) Get(key string, commandIndex int) (bool, string) {
 		if command.CommandIndex > commandIndex {
 			break
 		}
-		if command.Command.Key == key && command.Command.Op == "Put" {
+		if command.Command.Key == key && command.Command.Op == "PUT" {
 			found = true
 			value = command.Command.Value
 		}

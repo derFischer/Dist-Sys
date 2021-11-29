@@ -423,7 +423,7 @@ func GenericTestLinearizability(t *testing.T, part string, nclients int, nserver
 	}
 }
 
-func TestRedisStaleRead(t *testing.T) {
+func TestETCDStaleRead(t *testing.T) {
 	const nservers = 3
 	cfg := make_config(t, nservers, false, -1)
 	defer cfg.cleanup()
@@ -442,24 +442,11 @@ func TestRedisStaleRead(t *testing.T) {
 	Put(cfg, ck, "1", "1")
 	t.Log("put 1 successfully\n")
 
-	done0 := make(chan bool)
-	//done1 := make(chan bool)
-
 	t.Logf("try to partition the server first time, current leader: %d\n", leaderId)
 	// partition the servers, leader in the minority
 	p1, p2 := cfg.make_partition()
 	cfg.partition(p1, p2)
-	ck1 := cfg.makeClient(p2)
-	ck1.SetLeader(leaderId)
 
-	t.Log("send a new put to the partitioned server\n")
-	go func() {
-		Put(cfg, ck1, "1", "2")
-		done0 <- true
-	}()
-
-	t.Log("check the leader after partition\n")
-	//check whether the majority elect a new leader
 	after_partition, leader_after_partition := cfg.LegalLeader()
 	for {
 		if after_partition && leader_after_partition != leaderId {
@@ -467,57 +454,15 @@ func TestRedisStaleRead(t *testing.T) {
 		}
 		after_partition, leader_after_partition = cfg.LegalLeader()
 	}
+	ck1 := cfg.makeClient(p1)
+	ck1.SetLeader(leader_after_partition)
+	Put(cfg, ck1, "1", "2")
 
-	t.Logf("partition again, current leader: %d\n", leader_after_partition)
-	//partition again
-	p1, p2 = cfg.make_partition()
-	cfg.partition(p1, p2)
 	ck2 := cfg.makeClient(p2)
-	ck2.SetLeader(leader_after_partition)
-
-	t.Log("send a get to the new partitioned leader\n")
-	go func() {
-		Get(cfg, ck2, "1")
-	}()
-
-	t.Log("wait for the put command to commit\n")
-	select {
-	case <-done0:
-		t.Log("put 1 successful\n")
-	//case <-time.After(time.Second * 5):
-	//	t.Fatalf("failed to commit put")
-	}
-
-	t.Log("check the new elected leader\n")
-	//check whether the majority elect a new leader
-	after_partition_again, leader_after_partition_again := cfg.LegalLeader()
-	for {
-		if after_partition_again && leader_after_partition_again != leader_after_partition {
-			break
-		}
-		after_partition_again, leader_after_partition_again = cfg.LegalLeader()
-	}
-
-	//partition again
-	t.Logf("partition again, current leader: %d\n", leader_after_partition_again)
-	p1, p2 = cfg.make_partition()
-	cfg.partition(p1, p2)
-	ck3 := cfg.makeClient(p1)
-	final_leader, final_leader_id := cfg.LegalLeader()
-	for {
-		if final_leader && final_leader_id != leader_after_partition_again {
-			break
-		}
-		final_leader, final_leader_id = cfg.LegalLeader()
-	}
-	t.Logf("final leader: %d", final_leader_id)
-	ck3.SetLeader(final_leader_id)
-
-	t.Log("send a get command to get the value of 1\n")
-	v := Get(cfg, ck3, "1")
-
+	ck2.SetLeader(leaderId)
+	v := Get(cfg, ck2, "1")
 	if v != "2" {
-		t.Fatalf("stale read! read value: %s, should be: 2\n", v)
+		t.Fatalf("value of v: %s, stale read!", v)
 	}
 }
 
