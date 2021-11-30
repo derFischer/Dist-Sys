@@ -1,6 +1,5 @@
 package simulation
 
-
 import (
 	raftkv "kvraft"
 	"log"
@@ -27,6 +26,11 @@ const (
 	Leader    = 0
 	Follower  = 1
 	Candidate = 2
+)
+
+const (
+	TRUNCATED = -1
+	NONEXIST = -2
 )
 
 type RequestVoteArgs struct {
@@ -79,6 +83,7 @@ type PutAppendReply struct {
 	Success bool
 }
 
+
 //
 // A Go object implementing a single Raft peer.
 //
@@ -95,6 +100,38 @@ type Simulation struct {
 	mmatchIndex []int
 }
 //helper function
+func Equal(arg1 int, arg2 int) bool {
+	if arg1 == TRUNCATED || arg2 == TRUNCATED {
+		return true
+	}
+	if arg1 == NONEXIST || arg2 == NONEXIST {
+		return false
+	} else {
+		return arg1 == arg2
+	}
+}
+
+func SliceEqual(arg1 []Command, arg2 []Command) bool {
+	if len(arg1) != len(arg2) {
+		return false
+	}
+	length := len(arg1)
+	for index := 0; index < length; index++ {
+		c1 := arg1[index]
+		c2 := arg2[index]
+		if c1.CommandIndex == NONEXIST || c2.CommandIndex == NONEXIST {
+			return false
+		}
+		if c1.CommandIndex == TRUNCATED || c2.CommandIndex == TRUNCATED {
+			continue
+		}
+		if (!(c1.CommandIndex == c2.CommandIndex && c1.CommandTerm == c2.CommandTerm && c1.Command == c2.Command)) {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Simulation) getLastCommandIndex() int {
 	return s.Log[len(s.Log)-1].CommandIndex
 }
@@ -103,12 +140,61 @@ func (s *Simulation) getLastCommandTerm() int {
 	return s.Log[len(s.Log)-1].CommandTerm
 }
 
+func (s *Simulation) getCurrentIndex(commandIndex int) int {
+	first_command_index := s.Log[0].CommandIndex
+	current_index := commandIndex - first_command_index
+	if current_index < 0 {
+		return TRUNCATED
+	} else if current_index > len(s.Log) - 1 {
+		return NONEXIST
+	}
+	return current_index
+}
+
+func (s *Simulation) getCommand(commandIndex int) Command {
+	localIndex := s.getCurrentIndex(commandIndex)
+	if localIndex == TRUNCATED {
+		return Command{CommandIndex: TRUNCATED, CommandTerm: TRUNCATED}
+	} else if localIndex == NONEXIST {
+		return Command{CommandIndex: NONEXIST, CommandTerm: NONEXIST}
+	}
+	return s.Log[localIndex]
+}
+
 func (s *Simulation) getCommandTerm(commandIndex int) int {
-	return 0
+	return s.getCommand(commandIndex).CommandTerm
 }
 
 func (s *Simulation) getLogSlice(prevIndex int, length int) []Command {
-	return []Command{}
+	var result []Command
+	for i := 1; i <= length; i++ {
+		result = append(result, s.getCommand(prevIndex + 1))
+	}
+	return result
+}
+
+func (s *Simulation) entryInLog(args Op) (bool, Command) {
+	for _, command := range s.Log {
+		if command.Command == args {
+			return true, command
+		}
+	}
+	return false, Command{}
+}
+
+func (s *Simulation) Get(key string, commandIndex int) (bool, string) {
+	found := false
+	value := ""
+	for _, command := range s.Log {
+		if command.CommandIndex > commandIndex {
+			break
+		}
+		if command.Command.Key == key && command.Command.Op == "Put" {
+			found = true
+			value = command.Command.Value
+		}
+	}
+	return found, value
 }
 
 //call from the upper layer
@@ -117,9 +203,9 @@ func (s *Simulation) CheckRequestMessage(svcMeth string, args interface{})  {
 	valid := true
 	switch svcMeth {
 	case "Raft.RequestVote":
-		valid = s.RequestVoteRequestChecker(s.RequestVoteRequestInterPreter(args.(*raft.RequestVoteArgs)))
+		valid = s.RequestVoteRequestChecker(RequestVoteRequestInterPreter(args.(*raft.RequestVoteArgs)))
 	case "Raft.AppendEntries":
-		valid = s.AppendEntryRequestChecker(s.AppendEntryRequestInterPreter(args.(*raft.AppendEntriesArgs)))
+		valid = s.AppendEntryRequestChecker(AppendEntryRequestInterPreter(args.(*raft.AppendEntriesArgs)))
 	}
 	if !valid {
 		log.Fatalf("check request message error! server: %d, method: %s, args: %+v\n", s.me, svcMeth, args)
@@ -130,13 +216,13 @@ func (s *Simulation) CheckReplyMessage(svcMeth string, args interface{}, reply i
 	valid := true
 	switch svcMeth {
 	case "Raft.RequestVote":
-		valid = s.RequestVoteReplyChecker(s.RequestVoteRequestInterPreter(args.(*raft.RequestVoteArgs)), s.RequestVoteReplyInterpreter(reply.(*raft.RequestVoteReply)))
+		valid = s.RequestVoteReplyChecker(RequestVoteRequestInterPreter(args.(*raft.RequestVoteArgs)), RequestVoteReplyInterpreter(reply.(*raft.RequestVoteReply)))
 	case "Raft.AppendEntries":
-		valid = s.AppendEntryReplyChecker(s.AppendEntryRequestInterPreter(args.(*raft.AppendEntriesArgs)), s.AppendEntryReplyInterpreter(reply.(*raft.AppendEntriesReply)))
+		valid = s.AppendEntryReplyChecker(AppendEntryRequestInterPreter(args.(*raft.AppendEntriesArgs)), AppendEntryReplyInterpreter(reply.(*raft.AppendEntriesReply)))
 	case "KVServer.Get":
-		s.GetReplyChecker(s.GetRequestInterpreter(args.(*raftkv.GetArgs)), s.GetReplyInterpreter(reply.(*raftkv.GetReply)))
+		s.GetReplyChecker(GetRequestInterpreter(args.(*raftkv.GetArgs)), GetReplyInterpreter(reply.(*raftkv.GetReply)))
 	case "KVServer.PutAppend":
-		s.PutReplyChecker(s.PutRequestInterpreter(args.(*raftkv.PutAppendArgs)), s.PutReplyInterpreter(reply.(*raftkv.PutAppendReply)))
+		s.PutReplyChecker(PutRequestInterpreter(args.(*raftkv.PutAppendArgs)), PutReplyInterpreter(reply.(*raftkv.PutAppendReply)))
 	}
 	if !valid {
 		log.Fatalf("check reply message error! server: %d, method: %s, args: %+v, reply: %+v\n", s.me, svcMeth, args, reply)
@@ -147,67 +233,74 @@ func (s *Simulation) CheckReplyMessage(svcMeth string, args interface{}, reply i
 func (s *Simulation) HandleRequestMessage(svcMeth string, args interface{})  {
 	switch svcMeth {
 	case "Raft.RequestVote":
-		s.RequestVoteRequestHandler(s.RequestVoteRequestInterPreter(args.(*raft.RequestVoteArgs)))
+		s.RequestVoteRequestHandler(RequestVoteRequestInterPreter(args.(*raft.RequestVoteArgs)))
 	case "Raft.AppendEntries":
-		s.AppendEntryRequestHandler(s.AppendEntryRequestInterPreter(args.(*raft.AppendEntriesArgs)))
+		s.AppendEntryRequestHandler(AppendEntryRequestInterPreter(args.(*raft.AppendEntriesArgs)))
 	case "KVServer.Get":
-		s.ClientRequestHandler(s.GetRequestInterpreter(args.(*raftkv.GetArgs)))
+		s.ClientRequestHandler(GetRequestInterpreter(args.(*raftkv.GetArgs)))
 	case "KVServer.PutAppend":
-		s.ClientRequestHandler(s.PutRequestInterpreter(args.(*raftkv.PutAppendArgs)))
+		s.ClientRequestHandler(PutRequestInterpreter(args.(*raftkv.PutAppendArgs)))
 	}
 }
 
 func (s *Simulation) HandleReplyMessage(svcMeth string, args interface{}, reply interface{})  {
 	switch svcMeth {
 	case "Raft.RequestVote":
-		s.RequestVoteReplyHandler(s.RequestVoteRequestInterPreter(args.(*raft.RequestVoteArgs)), s.RequestVoteReplyInterpreter(reply.(*raft.RequestVoteReply)))
+		s.RequestVoteReplyHandler(RequestVoteRequestInterPreter(args.(*raft.RequestVoteArgs)), RequestVoteReplyInterpreter(reply.(*raft.RequestVoteReply)))
 	case "Raft.AppendEntries":
-		s.AppendEntryReplyHandler(s.AppendEntryRequestInterPreter(args.(*raft.AppendEntriesArgs)), s.AppendEntryReplyInterpreter(reply.(*raft.AppendEntriesReply)))
+		s.AppendEntryReplyHandler(AppendEntryRequestInterPreter(args.(*raft.AppendEntriesArgs)), AppendEntryReplyInterpreter(reply.(*raft.AppendEntriesReply)))
 	}
 }
 
 //Interpreter: interpret the message to simulation
-func (s *Simulation) CommandInterpreter(command []raft.Command) []Command {
-	return []Command{}
+
+func CommandInterpreter(command raft.Command) Command {
+	op := command.Command.(raftkv.Op)
+	return Command{CommandIndex: command.CommandIndex, CommandTerm: command.CommandTerm, Command: Op{Op: op.Op, Key: op.Key, Value: op.Value, ClientId: op.ClientId, ReqId: op.ReqId}}
 }
 
-func (s *Simulation) GetRequestInterpreter(args *raftkv.GetArgs) Op {
+func CommandsInterpreter(commands []raft.Command) []Command {
+	var result []Command
+	for _, command := range commands {
+		result = append(result, CommandInterpreter(command))
+	}
+	return result
+}
+
+func GetRequestInterpreter(args *raftkv.GetArgs) Op {
 	return Op{Op: "Get", Key: args.Key, ClientId: args.ClientId, ReqId: args.ReqId}
 }
 
-func (s *Simulation) PutRequestInterpreter(args *raftkv.PutAppendArgs) Op {
+func PutRequestInterpreter(args *raftkv.PutAppendArgs) Op {
 	return Op{Op: "Put", Key: args.Key, Value: args.Value, ClientId: args.ClientId, ReqId: args.ReqId}
 }
 
-func (s *Simulation) GetReplyInterpreter(args *raftkv.GetReply) GetReply {
+func GetReplyInterpreter(args *raftkv.GetReply) GetReply {
 	return GetReply{Value: args.Value, Success: args.Err == raftkv.OK}
 }
 
-func (s *Simulation) PutReplyInterpreter(args *raftkv.PutAppendReply) PutAppendReply {
+func PutReplyInterpreter(args *raftkv.PutAppendReply) PutAppendReply {
 	return PutAppendReply{Success: args.Err == raftkv.OK}
 }
 
-func (s *Simulation) RequestVoteRequestInterPreter(args *raft.RequestVoteArgs) RequestVoteArgs {
+func RequestVoteRequestInterPreter(args *raft.RequestVoteArgs) RequestVoteArgs {
 	return RequestVoteArgs{mterm: args.Term, msource: args.CandidateId, mlastLogIndex: args.LastLogIndex, mlastLogTerm: args.LastLogTerm}
 }
 
-func (s *Simulation) AppendEntryRequestInterPreter(args *raft.AppendEntriesArgs) AppendEntriesArgs {
-	return AppendEntriesArgs{mterm: args.Term, msource: args.LeaderId, mprevLogIndex: args.PrevLogIndex, mprevLogTerm: args.PrevLogTerm, mentries: s.CommandInterpreter(args.Entries), mcommitIndex: args.LeaderCommit}
+func AppendEntryRequestInterPreter(args *raft.AppendEntriesArgs) AppendEntriesArgs {
+	return AppendEntriesArgs{mterm: args.Term, msource: args.LeaderId, mprevLogIndex: args.PrevLogIndex, mprevLogTerm: args.PrevLogTerm, mentries: CommandsInterpreter(args.Entries), mcommitIndex: args.LeaderCommit}
 }
 
-func (s *Simulation) RequestVoteReplyInterpreter(reply *raft.RequestVoteReply) RequestVoteReply {
+func RequestVoteReplyInterpreter(reply *raft.RequestVoteReply) RequestVoteReply {
 	return RequestVoteReply{mterm: reply.Term, mvoteGranted: reply.VoteGranted}
 }
 
-func (s *Simulation) AppendEntryReplyInterpreter(reply *raft.AppendEntriesReply) AppendEntriesReply {
+func AppendEntryReplyInterpreter(reply *raft.AppendEntriesReply) AppendEntriesReply {
 	return AppendEntriesReply{mterm: reply.Term, msuccess: reply.Success, mmatchIndex: reply.NextIndex - 1}
 }
 
 
 //checker: check whether the message is correct
-//func (s *Simulation) ReplyToClient(args string) bool {
-//	return true
-//}
 
 func (s *Simulation) RequestVoteRequestChecker(args RequestVoteArgs) bool {
 
@@ -216,7 +309,7 @@ func (s *Simulation) RequestVoteRequestChecker(args RequestVoteArgs) bool {
 
 func (s *Simulation) AppendEntryRequestChecker(args AppendEntriesArgs) bool {
 	state_check := (s.State == Leader) && (args.mterm == s.CurrentTerm) && (args.msource == s.me) && (args.mcommitIndex == s.CommitIndex)
-	params_checker := (args.mprevLogTerm == s.getCommandTerm(args.mprevLogIndex)) && (args.mentries == s.getLogSlice(args.mprevLogIndex, len(args.mentries)))
+	params_checker := Equal(args.mprevLogTerm, s.getCommandTerm(args.mprevLogIndex)) && SliceEqual(args.mentries, s.getLogSlice(args.mprevLogIndex, len(args.mentries)))
 	return state_check && params_checker
 }
 
@@ -227,17 +320,22 @@ func (s *Simulation) RequestVoteReplyChecker(args RequestVoteArgs, reply Request
 }
 
 func (s *Simulation) AppendEntryReplyChecker(args AppendEntriesArgs, reply AppendEntriesReply) bool {
-	logOK := (args.mprevLogIndex == 0) || (args.mprevLogIndex > 0 && args.mprevLogIndex < s.getLastCommandIndex() && args.mprevLogTerm == s.getCommandTerm(args.mprevLogIndex))
+	logOK := (args.mprevLogIndex == 0) || (args.mprevLogIndex > 0 && args.mprevLogIndex < s.getLastCommandIndex() && Equal(args.mprevLogTerm, s.getCommandTerm(args.mprevLogIndex)))
 	success := (args.mterm == s.CurrentTerm) && (s.State == Follower) && logOK
 	return reply.mterm == s.CurrentTerm && reply.msuccess == success && (!success || reply.mmatchIndex == args.mprevLogIndex + len(args.mentries))
 }
 
 func (s *Simulation) GetReplyChecker(args Op, reply GetReply) bool {
-	return true
+	found, command := s.entryInLog(args)
+	key_in_log, value := s.Get(args.Key, command.CommandIndex)
+	commit := s.CommitIndex >= command.CommandIndex
+	return !reply.Success || !found || !key_in_log || value == reply.Value && commit
 }
 
 func (s *Simulation) PutReplyChecker(args Op, reply PutAppendReply) bool {
-	return true
+	found, command := s.entryInLog(args)
+	commit := s.CommitIndex >= command.CommandIndex
+	return !reply.Success || !found ||  commit
 }
 
 
