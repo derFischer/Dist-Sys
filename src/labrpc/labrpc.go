@@ -60,6 +60,7 @@ import "time"
 import (
 	"sync/atomic"
 )
+import "simulation"
 
 type reqMsg struct {
 	endname  interface{} // name of sending ClientEnd
@@ -78,12 +79,16 @@ type ClientEnd struct {
 	endname interface{}   // this end-point's name
 	ch      chan reqMsg   // copy of Network.endCh
 	done    chan struct{} // closed when Network is cleaned up
+	sl		*simulation.Simulation //simulation layer
 }
 
 // send an RPC, wait for the reply.
 // the return value indicates success; false means that
 // no reply was received from the server.
 func (e *ClientEnd) Call(svcMeth string, args interface{}, reply interface{}) bool {
+	//check the message before call:
+	e.sl.CheckRequestMessage(svcMeth, args)
+
 	req := reqMsg{}
 	req.endname = e.endname
 	req.svcMeth = svcMeth
@@ -109,6 +114,8 @@ func (e *ClientEnd) Call(svcMeth string, args interface{}, reply interface{}) bo
 		if err := rd.Decode(reply); err != nil {
 			log.Fatalf("ClientEnd.Call(): decode reply: %v\n", err)
 		}
+		//send back the reply
+		e.sl.HandleReplyMessage(svcMeth, args, reply)
 		return true
 	} else {
 		return false
@@ -372,6 +379,7 @@ type Server struct {
 	mu       sync.Mutex
 	services map[string]*Service
 	count    int // incoming RPCs
+	sl       *simulation.Simulation
 }
 
 func MakeServer() *Server {
@@ -426,6 +434,7 @@ type Service struct {
 	rcvr    reflect.Value
 	typ     reflect.Type
 	methods map[string]reflect.Method
+	sl       *simulation.Simulation
 }
 
 func MakeService(rcvr interface{}) *Service {
@@ -478,6 +487,10 @@ func (svc *Service) dispatch(methname string, req reqMsg) replyMsg {
 		// call the method.
 		function := method.Func
 		function.Call([]reflect.Value{svc.rcvr, args.Elem(), replyv})
+		//send the request to simulation too
+		svc.sl.HandleRequestMessage(methname, args)
+		//check the reply before send back
+		svc.sl.CheckReplyMessage(methname, args, replyv)
 
 		// encode the reply.
 		rb := new(bytes.Buffer)
