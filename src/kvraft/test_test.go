@@ -425,6 +425,7 @@ func GenericTestLinearizability(t *testing.T, part string, nclients int, nserver
 
 func TestRedisStaleRead(t *testing.T) {
 	const nservers = 3
+	t.Logf("start, total server = %d", nservers)
 	cfg := make_config(t, nservers, false, -1)
 	defer cfg.cleanup()
 	ck := cfg.makeClient(cfg.All())
@@ -438,7 +439,7 @@ func TestRedisStaleRead(t *testing.T) {
 	}
 
 	ck.SetLeader(leaderId)
-	t.Logf("first try to put 1 as 1, leader id: %d\n", leaderId)
+	t.Logf("election success, first try to put 1 as 1, leader id: %d\n", leaderId)
 	Put(cfg, ck, "1", "1")
 	t.Log("put 1 successfully\n")
 
@@ -452,13 +453,13 @@ func TestRedisStaleRead(t *testing.T) {
 	ck1 := cfg.makeClient(p2)
 	ck1.SetLeader(leaderId)
 
-	t.Log("send a new put to the partitioned server\n")
+	t.Logf("send a new put to the partitioned server %d, value = 2\n", leaderId)
 	go func() {
 		Put(cfg, ck1, "1", "2")
 		done0 <- true
 	}()
 
-	t.Log("check the leader after partition\n")
+	t.Log("wait for the election after partition\n")
 	//check whether the majority elect a new leader
 	after_partition, leader_after_partition := cfg.LegalLeader()
 	for {
@@ -475,7 +476,7 @@ func TestRedisStaleRead(t *testing.T) {
 	ck2 := cfg.makeClient(p2)
 	ck2.SetLeader(leader_after_partition)
 
-	t.Log("send a get to the new partitioned leader\n")
+	t.Logf("send a get to the new partitioned leader %d\n", leader_after_partition)
 	go func() {
 		Get(cfg, ck2, "1")
 	}()
@@ -483,12 +484,13 @@ func TestRedisStaleRead(t *testing.T) {
 	t.Log("wait for the put command to commit\n")
 	select {
 	case <-done0:
-		t.Log("put 1 successful\n")
+		_, l := cfg.LegalLeader()
+		t.Logf("put 1 as 2 successful, current leader %d\n", l)
 	//case <-time.After(time.Second * 5):
 	//	t.Fatalf("failed to commit put")
 	}
 
-	t.Log("check the new elected leader\n")
+	//t.Log("wait for the election after partition\n")
 	//check whether the majority elect a new leader
 	after_partition_again, leader_after_partition_again := cfg.LegalLeader()
 	for {
