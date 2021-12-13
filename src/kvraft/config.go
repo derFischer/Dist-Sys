@@ -202,7 +202,7 @@ func (cfg *config) makeClient(to []int) *Clerk {
 		cfg.net.Connect(endnames[j], j)
 	}
 
-	ck := MakeClerk(random_handles(ends))
+	ck := MakeClerk(ends)
 	cfg.clerks[ck] = endnames
 	cfg.nextClientId++
 	cfg.ConnectClientUnlocked(ck, to)
@@ -337,9 +337,29 @@ func (cfg *config) Leader() (bool, int) {
 	return false, 0
 }
 
+func (cfg *config) LegalLeader() (bool, int) {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	curr_term := -1
+	curr_is_leader := false
+	leader_id := -1
+	for i := 0; i < cfg.n; i++ {
+		term, is_leader := cfg.kvservers[i].rf.GetState()
+		if is_leader {
+			if term > curr_term {
+				curr_term = term
+				curr_is_leader = true
+				leader_id = i
+			}
+		}
+	}
+	return curr_is_leader, leader_id
+}
+
 // Partition servers into 2 groups and put current leader in minority
 func (cfg *config) make_partition() ([]int, []int) {
-	_, l := cfg.Leader()
+	_, l := cfg.LegalLeader()
 	p1 := make([]int, cfg.n/2+1)
 	p2 := make([]int, cfg.n/2)
 	j := 0

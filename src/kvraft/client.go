@@ -1,6 +1,9 @@
 package raftkv
 
-import "labrpc"
+import (
+	"fmt"
+	"labrpc"
+)
 import "crypto/rand"
 import "Common"
 import (
@@ -10,8 +13,8 @@ import (
 )
 
 const (
-	WAITTIME = 100
-	TRITIME  = 3
+	WAITTIME = 50000
+	TRITIME  = 1
 )
 
 type Clerk struct {
@@ -55,6 +58,9 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // must match the declared types of the RPC handler function's
 // arguments. and reply must be passed as a pointer.
 //
+func (ck *Clerk) SetLeader(leader int) {
+	ck.leader = leader
+}
 
 func (ck *Clerk) Get(key string) string {
 
@@ -75,62 +81,80 @@ func (ck *Clerk) Get(key string) string {
 		}
 	}
 
-	for {
-		var reply Common.GetReply
-		var ok bool
-		tries := 0
-		for {
-			tries++
-			//fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
-			go func() {
-				ok = ck.servers[ck.leader].Call("KVServer.Get", &args, &reply)
-			}()
-			time.Sleep(WAITTIME * time.Millisecond)
-			if ok || tries >= TRITIME {
-				//fmt.Printf("content: %+v tries: %d\n", args, tries)
-				break
-			}
-		}
-		//fmt.Printf("GET RPC %+v received reply %+v\n", args, reply)
-		if ok && !reply.WrongLeader {
-			if reply.Err == Common.OK {
-				ck.revId++
-				return reply.Value
-			} else if reply.Err == Common.ErrNoKey {
-				ck.revId++
-				return ""
-			}
-		} else {
-			for i := 0; i < len(ck.servers); i++ {
-				var reply Common.GetReply
-				var ok bool
-				tries := 0
-				for {
-					tries++
-					//fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
-					go func() {
-						ok = ck.servers[i].Call("KVServer.Get", &args, &reply)
-					}()
-					time.Sleep(WAITTIME * time.Millisecond)
-					if ok || tries >= TRITIME {
-						//fmt.Printf("content: %+v tries: %d\n", args, tries)
-						break
-					}
-				}
-				//fmt.Printf("GET RPC %+v received reply %+v\n", args, reply)
-				if ok && !reply.WrongLeader {
-					ck.leader = i
-					if reply.Err == Common.OK {
-						ck.revId++
-						return reply.Value
-					} else if reply.Err == Common.ErrNoKey {
-						ck.revId++
-						return ""
-					}
-				}
-			}
+	//for {
+	var reply Common.GetReply
+	//var ok bool
+	//tries := 0
+	//for {
+	//	tries++
+	//	//fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
+	//	go func() {
+	//		ok = ck.servers[ck.leader].Call("KVServer.Get", &args, &reply)
+	//	}()
+	//	time.Sleep(WAITTIME * time.Millisecond)
+	//	if ok || tries >= TRITIME {
+	//		//fmt.Printf("content: %+v tries: %d\n", args, tries)
+	//		break
+	//	}
+	//}
+	fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v\n", ck.id, ck.reqId, ck.leader, args)
+	ok := ck.servers[ck.leader].Call("KVServer.Get", &args, &reply)
+	if ok && !reply.WrongLeader {
+		if reply.Err == Common.OK {
+			ck.revId++
+			return reply.Value
+		} else if reply.Err == Common.ErrNoKey {
+			ck.revId++
+			return ""
 		}
 	}
+	//else {
+	//	fmt.Printf("ok: %t, wrongleader: %t", ok, reply.WrongLeader)
+	//	return ""
+	//}
+	fmt.Printf("shouldn't arrive here, %+v", reply)
+	return ""
+
+		//fmt.Printf("GET RPC %+v received reply %+v\n", args, reply)
+		//if ok && !reply.WrongLeader {
+		//	if reply.Err == OK {
+		//		ck.revId++
+		//		return reply.Value
+		//	} else if reply.Err == ErrNoKey {
+		//		ck.revId++
+		//		return ""
+		//	}
+		//} else {
+		//	for i := 0; i < len(ck.servers); i++ {
+		//		var reply GetReply
+		//		var ok bool
+		//		tries := 0
+		//		for {
+		//			tries++
+		//			//fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
+		//			go func() {
+		//				ok = ck.servers[i].Call("KVServer.Get", &args, &reply)
+		//			}()
+		//			time.Sleep(WAITTIME * time.Millisecond)
+		//			if ok || tries >= TRITIME {
+		//				//fmt.Printf("content: %+v tries: %d\n", args, tries)
+		//				break
+		//			}
+		//		}
+		//		//fmt.Printf("GET RPC %+v received reply %+v\n", args, reply)
+		//		if ok && !reply.WrongLeader {
+		//			ck.leader = i
+		//			if reply.Err == OK {
+		//				ck.revId++
+		//				return reply.Value
+		//			} else if reply.Err == ErrNoKey {
+		//				ck.revId++
+		//				return ""
+		//			}
+		//		}
+		//	}
+		//}
+	//}
 }
 
 //
@@ -164,65 +188,80 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		}
 	}
 
-	//first try to send the RPC to the leader which was recorded locally
-	for {
-		var reply Common.PutAppendReply
-		var ok bool
-		tries := 0
-		for {
-			tries++
-			//fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
-			go func() {
-				ok = ck.servers[ck.leader].Call("KVServer.PutAppend", &args, &reply)
-			}()
-			time.Sleep(WAITTIME * time.Millisecond)
-			if ok || tries >= TRITIME {
-				//fmt.Printf("content: %+v tries: %d\n", args, tries)
-				break
-			}
-		}
-		//fmt.Printf("APPEND RPC %+v received reply %+v\n", args, reply)
-
-		if ok && !reply.WrongLeader {
-			if reply.Err == Common.OK {
-				ck.revId++
-				return
-			} else {
-				ck.revId++
-				return
-			}
+	var reply Common.PutAppendReply
+	ok := ck.servers[ck.leader].Call("KVServer.PutAppend", &args, &reply)
+	if ok && !reply.WrongLeader {
+		if reply.Err == Common.OK {
+			ck.revId++
+			return
 		} else {
-			for i := 0; i < len(ck.servers); i++ {
-				//fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v\n", ck.id, ck.reqId, i, args)
-				var reply Common.PutAppendReply
-				var ok bool
-				tries := 0
-				for {
-					tries++
-					//fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
-					go func() {
-						ok = ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
-					}()
-					time.Sleep(WAITTIME * time.Millisecond)
-					if ok || tries >= TRITIME {
-						//fmt.Printf("content: %+v tries: %d\n", args, tries)
-						break
-					}
-				}
-				//fmt.Printf("APPEND RPC %+v received reply %+v\n", args, reply)
-				if ok && !reply.WrongLeader {
-					ck.leader = i
-					if reply.Err == Common.OK {
-						ck.revId++
-						return
-					} else {
-						ck.revId++
-						return
-					}
-				}
-			}
+			ck.revId++
+			return
 		}
 	}
+
+	fmt.Printf("shouldn't arrive here")
+	return
+
+	//first try to send the RPC to the leader which was recorded locally
+	//for {
+	//	var reply PutAppendReply
+	//	var ok bool
+	//	tries := 0
+	//	for {
+	//		tries++
+	//		fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
+	//		go func() {
+	//			ok = ck.servers[ck.leader].Call("KVServer.PutAppend", &args, &reply)
+	//		}()
+	//		time.Sleep(WAITTIME * time.Millisecond)
+	//		if ok || tries >= TRITIME {
+	//			//fmt.Printf("content: %+v tries: %d\n", args, tries)
+	//			break
+	//		}
+	//	}
+		//fmt.Printf("APPEND RPC %+v received reply %+v\n", args, reply)
+
+		//if ok && !reply.WrongLeader {
+		//	if reply.Err == OK {
+		//		ck.revId++
+		//		return
+		//	} else {
+		//		ck.revId++
+		//		return
+		//	}
+		//} else {
+		//	for i := 0; i < len(ck.servers); i++ {
+		//		//fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v\n", ck.id, ck.reqId, i, args)
+		//		var reply PutAppendReply
+		//		var ok bool
+		//		tries := 0
+		//		for {
+		//			tries++
+		//			//fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
+		//			go func() {
+		//				ok = ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
+		//			}()
+		//			time.Sleep(WAITTIME * time.Millisecond)
+		//			if ok || tries >= TRITIME {
+		//				//fmt.Printf("content: %+v tries: %d\n", args, tries)
+		//				break
+		//			}
+		//		}
+		//		//fmt.Printf("APPEND RPC %+v received reply %+v\n", args, reply)
+		//		if ok && !reply.WrongLeader {
+		//			ck.leader = i
+		//			if reply.Err == OK {
+		//				ck.revId++
+		//				return
+		//			} else {
+		//				ck.revId++
+		//				return
+		//			}
+		//		}
+		//	}
+		//}
+	//}
 	//if the recorded leader has been replaced, retry RPC to other kvservers
 }
 
