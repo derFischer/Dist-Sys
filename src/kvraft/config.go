@@ -15,6 +15,7 @@ import "raft"
 import "fmt"
 import "time"
 import "sync/atomic"
+import "simulation"
 
 func randstring(n int) string {
 	b := make([]byte, 2*n)
@@ -293,10 +294,11 @@ func (cfg *config) StartServer(i int) {
 		cfg.endnames[i][j] = randstring(20)
 	}
 
+	sl := simulation.NewSL(i, cfg.n)
 	// a fresh set of ClientEnds.
 	ends := make([]*labrpc.ClientEnd, cfg.n)
 	for j := 0; j < cfg.n; j++ {
-		ends[j] = cfg.net.MakeEnd(cfg.endnames[i][j])
+		ends[j] = cfg.net.MakeEndWithSL(cfg.endnames[i][j], sl)
 		cfg.net.Connect(cfg.endnames[i][j], j)
 	}
 
@@ -314,8 +316,8 @@ func (cfg *config) StartServer(i int) {
 
 	cfg.kvservers[i] = StartKVServer(ends, i, cfg.saved[i], cfg.maxraftstate)
 
-	kvsvc := labrpc.MakeService(cfg.kvservers[i])
-	rfsvc := labrpc.MakeService(cfg.kvservers[i].rf)
+	kvsvc := labrpc.MakeServiceWithSL(cfg.kvservers[i], sl)
+	rfsvc := labrpc.MakeServiceWithSL(cfg.kvservers[i].rf, sl)
 	srv := labrpc.MakeServer()
 	srv.AddService(kvsvc)
 	srv.AddService(rfsvc)

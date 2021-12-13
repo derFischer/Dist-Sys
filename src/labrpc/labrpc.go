@@ -304,6 +304,25 @@ func (rn *Network) ProcessReq(req reqMsg) {
 
 }
 
+func (rn *Network) MakeEndWithSL(endname interface{}, sl *simulation.Simulation) *ClientEnd {
+	rn.mu.Lock()
+	defer rn.mu.Unlock()
+
+	if _, ok := rn.ends[endname]; ok {
+		log.Fatalf("MakeEnd: %v already exists\n", endname)
+	}
+
+	e := &ClientEnd{}
+	e.endname = endname
+	e.ch = rn.endCh
+	e.done = rn.done
+	e.sl = sl
+	rn.ends[endname] = e
+	rn.enabled[endname] = false
+	rn.connections[endname] = nil
+
+	return e
+}
 // create a client end-point.
 // start the thread that listens and delivers.
 func (rn *Network) MakeEnd(endname interface{}) *ClientEnd {
@@ -379,7 +398,6 @@ type Server struct {
 	mu       sync.Mutex
 	services map[string]*Service
 	count    int // incoming RPCs
-	sl       *simulation.Simulation
 }
 
 func MakeServer() *Server {
@@ -435,6 +453,38 @@ type Service struct {
 	typ     reflect.Type
 	methods map[string]reflect.Method
 	sl       *simulation.Simulation
+}
+
+func MakeServiceWithSL(rcvr interface{}, sl *simulation.Simulation) *Service {
+	svc := &Service{}
+	svc.typ = reflect.TypeOf(rcvr)
+	svc.rcvr = reflect.ValueOf(rcvr)
+	svc.name = reflect.Indirect(svc.rcvr).Type().Name()
+	svc.methods = map[string]reflect.Method{}
+	svc.sl = sl
+
+	for m := 0; m < svc.typ.NumMethod(); m++ {
+		method := svc.typ.Method(m)
+		mtype := method.Type
+		mname := method.Name
+
+		//fmt.Printf("%v pp %v ni %v 1k %v 2k %v no %v\n",
+		//	mname, method.PkgPath, mtype.NumIn(), mtype.In(1).Kind(), mtype.In(2).Kind(), mtype.NumOut())
+
+		if method.PkgPath != "" || // capitalized?
+			mtype.NumIn() != 3 ||
+			//mtype.In(1).Kind() != reflect.Ptr ||
+			mtype.In(2).Kind() != reflect.Ptr ||
+			mtype.NumOut() != 0 {
+			// the method is not suitable for a handler
+			//fmt.Printf("bad method: %v\n", mname)
+		} else {
+			// the method looks like a handler
+			svc.methods[mname] = method
+		}
+	}
+
+	return svc
 }
 
 func MakeService(rcvr interface{}) *Service {

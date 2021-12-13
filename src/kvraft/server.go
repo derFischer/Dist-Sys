@@ -1,6 +1,7 @@
 package raftkv
 
 import (
+	"Common"
 	"bytes"
 	"labgob"
 	"labrpc"
@@ -26,23 +27,6 @@ const (
 	OFFLINETIME = 50
 )
 
-type recent struct {
-	ReqId  int
-	Result string
-	Err    Err
-}
-
-type Op struct {
-	// Your definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
-	Op        string
-	Key       string
-	Value     string
-	ClientId  int64
-	ReqId     int
-	ApplyChan chan recent
-}
 
 type KVServer struct {
 	mu      sync.Mutex
@@ -54,14 +38,14 @@ type KVServer struct {
 
 	//record
 	record  map[string]string
-	history map[int64]recent
+	history map[int64]Common.Recent
 
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
 }
 
-func (kv *KVServer) AppendEntryToLog(entry Op) bool {
+func (kv *KVServer) AppendEntryToLog(entry Common.Op) bool {
 
 	_, _, isLeader := kv.rf.Start(entry)
 	/*select {
@@ -79,7 +63,7 @@ func (kv *KVServer) isUpToDate(ClientId int64, ReqId int) bool {
 	return true
 }
 
-func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
+func (kv *KVServer) Get(args *Common.GetArgs, reply *Common.GetReply) {
 	//fmt.Printf("server %d receive a GET RPC %+v\n", kv.me, args)
 	if !kv.isUpToDate(args.ClientId, args.ReqId) {
 		tmp := kv.history[args.ClientId]
@@ -91,8 +75,8 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		}
 	}
 
-	var ApplyCh = make(chan recent, 1)
-	entry := Op{Op: GET, Key: args.Key, ClientId: args.ClientId, ReqId: args.ReqId, ApplyChan: ApplyCh}
+	var ApplyCh = make(chan Common.Recent, 1)
+	entry := Common.Op{Op: GET, Key: args.Key, ClientId: args.ClientId, ReqId: args.ReqId, ApplyChan: ApplyCh}
 
 	isLeader := kv.AppendEntryToLog(entry)
 	if !isLeader {
@@ -104,7 +88,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 			select {
 			case tmp := <-ApplyCh:
 				reply.Err = tmp.Err
-				if reply.Err == OK {
+				if reply.Err == Common.OK {
 					reply.Value = tmp.Result
 				}
 				return
@@ -113,10 +97,10 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 }
 
-func (kv *KVServer) apply(entry Op, index int) {
+func (kv *KVServer) apply(entry Common.Op, index int) {
 
 	if !kv.isUpToDate(entry.ClientId, entry.ReqId) {
-		var reply recent
+		var reply Common.Recent
 		if entry.Op == GET {
 			tmp := kv.history[entry.ClientId]
 			if entry.ReqId == tmp.ReqId {
@@ -125,7 +109,7 @@ func (kv *KVServer) apply(entry Op, index int) {
 				return
 			}
 		} else {
-			reply.Err = OK
+			reply.Err = Common.OK
 		}
 		if entry.ApplyChan != nil {
 			entry.ApplyChan <- kv.history[entry.ClientId]
@@ -145,16 +129,16 @@ func (kv *KVServer) apply(entry Op, index int) {
 		} else {
 			kv.record[entry.Key] += entry.Value
 		}
-		kv.history[entry.ClientId] = recent{ReqId: entry.ReqId, Err: OK}
+		kv.history[entry.ClientId] = Common.Recent{ReqId: entry.ReqId, Err: Common.OK}
 	case PUT:
 		kv.record[entry.Key] = entry.Value
-		kv.history[entry.ClientId] = recent{ReqId: entry.ReqId, Err: OK}
+		kv.history[entry.ClientId] = Common.Recent{ReqId: entry.ReqId, Err: Common.OK}
 	case GET:
 		v, ok := kv.record[entry.Key]
 		if ok {
-			kv.history[entry.ClientId] = recent{ReqId: entry.ReqId, Result: v, Err: OK}
+			kv.history[entry.ClientId] = Common.Recent{ReqId: entry.ReqId, Result: v, Err: Common.OK}
 		} else {
-			kv.history[entry.ClientId] = recent{ReqId: entry.ReqId, Err: ErrNoKey}
+			kv.history[entry.ClientId] = Common.Recent{ReqId: entry.ReqId, Err: Common.ErrNoKey}
 		}
 	}
 	if entry.ApplyChan != nil {
@@ -162,18 +146,18 @@ func (kv *KVServer) apply(entry Op, index int) {
 	}
 }
 
-func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
+func (kv *KVServer) PutAppend(args *Common.PutAppendArgs, reply *Common.PutAppendReply) {
 	// Your code here.
 	//fmt.Printf("server %d receive a PUTAPPEND RPC %+v local highest req id %d \n", kv.me, args, kv.history[args.ClientId].ReqId)
 
 	if !kv.isUpToDate(args.ClientId, args.ReqId) {
 		reply.WrongLeader = false
-		reply.Err = OK
+		reply.Err = Common.OK
 		return
 	}
 
-	ApplyCh := make(chan recent, 1)
-	entry := Op{Op: args.Op, Key: args.Key, Value: args.Value, ClientId: args.ClientId, ReqId: args.ReqId, ApplyChan: ApplyCh}
+	ApplyCh := make(chan Common.Recent, 1)
+	entry := Common.Op{Op: args.Op, Key: args.Key, Value: args.Value, ClientId: args.ClientId, ReqId: args.ReqId, ApplyChan: ApplyCh}
 
 	isLeader := kv.AppendEntryToLog(entry)
 	if !isLeader {
@@ -224,7 +208,7 @@ func (kv *KVServer) Kill() {
 func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int) *KVServer {
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
-	labgob.Register(Op{})
+	labgob.Register(Common.Op{})
 
 	kv := new(KVServer)
 	kv.me = me
@@ -236,7 +220,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	kv.stop = false
 	kv.record = map[string]string{}
-	kv.history = map[int64]recent{}
+	kv.history = map[int64]Common.Recent{}
 	// You may need initialization code here.
 	go func() {
 		for {
@@ -251,12 +235,12 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 					d := labgob.NewDecoder(r)
 
 					kv.record = make(map[string]string)
-					kv.history = make(map[int64]recent)
+					kv.history = make(map[int64]Common.Recent)
 
 					d.Decode(&kv.record)
 					d.Decode(&kv.history)
 				} else if tmp.Command != nil {
-					kv.apply(tmp.Command.(Op), tmp.CommandIndex)
+					kv.apply(tmp.Command.(Common.Op), tmp.CommandIndex)
 					if maxraftstate != -1 && kv.rf.GetRaftStateSize() >= (maxraftstate/2) {
 						//fmt.Printf("server %d wants to trim the raft state %d\n", kv.me, kv.rf.GetRaftStateSize())
 						w := new(bytes.Buffer)

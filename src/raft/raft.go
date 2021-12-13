@@ -17,7 +17,10 @@ package raft
 //   in the same server.
 //
 
-import "sync"
+import (
+	"Common"
+	"sync"
+)
 import "labrpc"
 import "time"
 import (
@@ -48,12 +51,6 @@ type ApplyMsg struct {
 
 	UseSnapshot bool   // ignore for lab2; only used in lab3
 	Snapshot    []byte // ignore for lab2; only used in lab3
-}
-
-type Command struct {
-	CommandIndex int
-	Command      interface{}
-	CommandTerm  int
 }
 
 const (
@@ -89,7 +86,7 @@ type Raft struct {
 	RequestVoteCh chan struct{} //signal, inform the server that vote successfully
 
 	//part B
-	Log []Command
+	Log []Common.Command
 
 	CommitIndex int
 	LastApplied int
@@ -227,31 +224,16 @@ func (rf *Raft) readSnapshot(data []byte) {
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 //
-type RequestVoteArgs struct {
-	Term        int
-	CandidateId int
-
-	LastLogIndex int
-	LastLogTerm  int
-}
-
-//
-// example RequestVote RPC reply structure.
-// field names must start with capital letters!
-//
-type RequestVoteReply struct {
-	Term        int
-	VoteGranted bool
-}
 
 //
 // example RequestVote RPC handler.
 //
-func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
+func (rf *Raft) RequestVote(args *Common.RequestVoteArgs, reply *Common.RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	defer rf.persist()
 
+	reply.From = rf.me
 	if args.Term < rf.CurrentTerm {
 		reply.Term = rf.CurrentTerm
 		reply.VoteGranted = false
@@ -293,26 +275,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // example AppendEntries RPC arguments structure.
 // field names must start with capital letters!
 //
-type AppendEntriesArgs struct {
-	Term     int
-	LeaderId int
-
-	//part B
-	PrevLogIndex int
-	PrevLogTerm  int
-	Entries      []Command
-	LeaderCommit int
-}
-
-//
-// example RequestVote RPC reply structure.
-// field names must start with capital letters!
-//
-type AppendEntriesReply struct {
-	Term      int
-	Success   bool
-	NextIndex int
-}
 
 func (rf *Raft) getIndexBeforeTerm(realIndex int) int {
 
@@ -335,7 +297,7 @@ func (rf *Raft) getIndexBeforeTerm(realIndex int) int {
 	return rf.calculateRealIndex(i + 1)
 }
 
-func (rf *Raft) testStaleRPC(argsPrevLogIndex int, argsPrevLogTerm int, entries []Command) bool {
+func (rf *Raft) testStaleRPC(argsPrevLogIndex int, argsPrevLogTerm int, entries []Common.Command) bool {
 	index := rf.calculateLocalIndex(argsPrevLogIndex)
 	if index >= 0 {
 		if rf.Log[index].CommandTerm != argsPrevLogTerm {
@@ -360,11 +322,12 @@ func (rf *Raft) testStaleRPC(argsPrevLogIndex int, argsPrevLogTerm int, entries 
 //
 // example RequestVote RPC handler.
 //
-func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+func (rf *Raft) AppendEntries(args *Common.AppendEntriesArgs, reply *Common.AppendEntriesReply) {
 	//fmt.Printf("server %d : APPENDENTRIES from server %d local term %d args term %d args.prevlogindex %d, commitindex %d leader commitindex %d last index %d entries: %+v\n", rf.me, args.LeaderId, rf.CurrentTerm, args.Term, args.PrevLogIndex, rf.CommitIndex, args.LeaderCommit, rf.getLastCommandIndex(), args.Entries)
 	//fmt.Println("enter: AppendEntries");
 
 	reply.Success = false
+	reply.From = rf.me
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	defer rf.persist()
@@ -458,7 +421,7 @@ type InstallSnapshotArgs struct {
 	SnapshotIndex int
 	SnapshotData  []byte
 
-	LastSnapshotCommand Command
+	LastSnapshotCommand Common.Command
 }
 
 type InstallSnapshotReply struct {
@@ -480,7 +443,7 @@ func (rf *Raft) StartSnapshot(snapshot []byte, lastCommand ApplyMsg) {
 		return
 	}
 
-	var newLogEntries []Command
+	var newLogEntries []Common.Command
 
 	localIndex := rf.calculateLocalIndex(index)
 	newLogEntries = append(newLogEntries, rf.Log[localIndex:]...)
@@ -520,7 +483,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 
 	rf.persister.SaveSnapshot(args.SnapshotData)
 
-	rf.Log = make([]Command, 1)
+	rf.Log = make([]Common.Command, 1)
 	rf.Log[0] = args.LastSnapshotCommand
 	rf.LastApplied = args.LastSnapshotCommand.CommandIndex
 	rf.CommitIndex = args.LastSnapshotCommand.CommandIndex
@@ -560,7 +523,7 @@ func (rf *Raft) updateState(state int) {
 // start election
 
 // broadcast requestVote
-func (rf *Raft) broadcastRequestVote(args *RequestVoteArgs) {
+func (rf *Raft) broadcastRequestVote(args *Common.RequestVoteArgs) {
 	//fmt.Println("enter: broadcastRequestVote");
 	rf.mu.Lock()
 	term := rf.CurrentTerm
@@ -574,12 +537,12 @@ func (rf *Raft) broadcastRequestVote(args *RequestVoteArgs) {
 	}
 }
 
-func (rf *Raft) sendSingleRequestVote(server int, args *RequestVoteArgs, term int) {
+func (rf *Raft) sendSingleRequestVote(server int, args *Common.RequestVoteArgs, term int) {
 
 	if rf.getState() != Candidate || rf.getTerm() != term {
 		return
 	}
-	var reply RequestVoteReply
+	var reply Common.RequestVoteReply
 	//fmt.Printf("server %d wants to send REQUEST VOTE RPC to server %d with args %+v\n", rf.me, server, args)
 	if rf.getState() == Candidate && rf.getTerm() == term && rf.sendRequestVote(server, args, &reply) {
 		//fmt.Printf("server %d receives the reply from server %d success %t\n", rf.me, server, reply.VoteGranted)
@@ -641,7 +604,7 @@ func (rf *Raft) sendSingleAppendEntries(server int, term int) bool {
 		rf.sendSingleInstallSnapshot(server, &args, term)
 		return true
 	}
-	var args AppendEntriesArgs
+	var args Common.AppendEntriesArgs
 	args.Term = term
 	args.LeaderId = rf.me
 	args.LeaderCommit = rf.CommitIndex
@@ -658,7 +621,7 @@ func (rf *Raft) sendSingleAppendEntries(server int, term int) bool {
 	}
 	rf.mu.Unlock()
 
-	var reply AppendEntriesReply
+	var reply Common.AppendEntriesReply
 	if rf.getState() == Leader && rf.getTerm() == term && rf.sendAppendEntries(server, &args, &reply) {
 		//handle the reply should acquire the lock
 		rf.mu.Lock()
@@ -780,12 +743,14 @@ func (rf *Raft) checkCommitIndex() {
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
 //
-func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
+func (rf *Raft) sendRequestVote(server int, args *Common.RequestVoteArgs, reply *Common.RequestVoteReply) bool {
+	args.From = rf.me
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
 }
 
-func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+func (rf *Raft) sendAppendEntries(server int, args *Common.AppendEntriesArgs, reply *Common.AppendEntriesReply) bool {
+	args.From = rf.me
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	return ok
 }
@@ -823,7 +788,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
 		index = rf.getLastCommandIndex() + 1
-		rf.Log = append(rf.Log, Command{CommandIndex: index, Command: command, CommandTerm: term})
+		rf.Log = append(rf.Log, Common.Command{CommandIndex: index, Command: command, CommandTerm: term})
 		rf.persist()
 		//update local record
 		rf.NextIndex[rf.me] = index + 1
@@ -868,7 +833,7 @@ func (rf *Raft) updateToCandidate() {
 	}
 	rf.updateBeforeRequestVote()
 
-	var args RequestVoteArgs
+	var args Common.RequestVoteArgs
 	rf.mu.Lock()
 	args.Term = rf.CurrentTerm
 	args.CandidateId = rf.me
@@ -953,8 +918,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.CommitIndex = 0
 	rf.LastApplied = 0
 
-	rf.Log = make([]Command, 1)
-	rf.Log[0] = Command{CommandIndex: 0}
+	rf.Log = make([]Common.Command, 1)
+	rf.Log[0] = Common.Command{CommandIndex: 0}
 	rf.NextIndex = make([]int, len(rf.peers))
 	rf.MatchIndex = make([]int, len(rf.peers))
 	rf.initNextIndexAndMatchIndex()

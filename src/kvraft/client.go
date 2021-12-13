@@ -2,6 +2,7 @@ package raftkv
 
 import "labrpc"
 import "crypto/rand"
+import "Common"
 import (
 	"math/big"
 	"sync"
@@ -58,7 +59,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 func (ck *Clerk) Get(key string) string {
 
 	// You will have to modify this function.
-	var args GetArgs
+	var args Common.GetArgs
 	args.Key = key
 	args.ClientId = ck.id
 	ck.mu.Lock()
@@ -75,7 +76,7 @@ func (ck *Clerk) Get(key string) string {
 	}
 
 	for {
-		var reply GetReply
+		var reply Common.GetReply
 		var ok bool
 		tries := 0
 		for {
@@ -92,16 +93,16 @@ func (ck *Clerk) Get(key string) string {
 		}
 		//fmt.Printf("GET RPC %+v received reply %+v\n", args, reply)
 		if ok && !reply.WrongLeader {
-			if reply.Err == OK {
+			if reply.Err == Common.OK {
 				ck.revId++
 				return reply.Value
-			} else if reply.Err == ErrNoKey {
+			} else if reply.Err == Common.ErrNoKey {
 				ck.revId++
 				return ""
 			}
 		} else {
 			for i := 0; i < len(ck.servers); i++ {
-				var reply GetReply
+				var reply Common.GetReply
 				var ok bool
 				tries := 0
 				for {
@@ -119,10 +120,10 @@ func (ck *Clerk) Get(key string) string {
 				//fmt.Printf("GET RPC %+v received reply %+v\n", args, reply)
 				if ok && !reply.WrongLeader {
 					ck.leader = i
-					if reply.Err == OK {
+					if reply.Err == Common.OK {
 						ck.revId++
 						return reply.Value
-					} else if reply.Err == ErrNoKey {
+					} else if reply.Err == Common.ErrNoKey {
 						ck.revId++
 						return ""
 					}
@@ -145,7 +146,7 @@ func (ck *Clerk) Get(key string) string {
 
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
-	var args PutAppendArgs
+	var args Common.PutAppendArgs
 	args.Key = key
 	args.Value = value
 	args.Op = op
@@ -165,7 +166,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 	//first try to send the RPC to the leader which was recorded locally
 	for {
-		var reply PutAppendReply
+		var reply Common.PutAppendReply
 		var ok bool
 		tries := 0
 		for {
@@ -183,7 +184,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		//fmt.Printf("APPEND RPC %+v received reply %+v\n", args, reply)
 
 		if ok && !reply.WrongLeader {
-			if reply.Err == OK {
+			if reply.Err == Common.OK {
 				ck.revId++
 				return
 			} else {
@@ -193,7 +194,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		} else {
 			for i := 0; i < len(ck.servers); i++ {
 				//fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v\n", ck.id, ck.reqId, i, args)
-				var reply PutAppendReply
+				var reply Common.PutAppendReply
 				var ok bool
 				tries := 0
 				for {
@@ -211,7 +212,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				//fmt.Printf("APPEND RPC %+v received reply %+v\n", args, reply)
 				if ok && !reply.WrongLeader {
 					ck.leader = i
-					if reply.Err == OK {
+					if reply.Err == Common.OK {
 						ck.revId++
 						return
 					} else {
