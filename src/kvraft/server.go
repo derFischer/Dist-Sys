@@ -67,6 +67,7 @@ func (kv *KVServer) isUpToDate(ClientId int64, ReqId int) bool {
 
 func (kv *KVServer) Get(args *Common.GetArgs, reply *Common.GetReply) {
 	//fmt.Printf("server %d receive a GET RPC %+v\n", kv.me, args)
+	defer kv.sl.CheckReplyMessage("KVServer.Get", args, reply)
 	if kv.sl != nil {
 		kv.sl.HandleRequestMessage("KVServer.Get", args)
 	}
@@ -155,6 +156,7 @@ func (kv *KVServer) apply(entry Common.Op, index int) {
 func (kv *KVServer) PutAppend(args *Common.PutAppendArgs, reply *Common.PutAppendReply) {
 	// Your code here.
 	//fmt.Printf("server %d receive a PUTAPPEND RPC %+v local highest req id %d \n", kv.me, args, kv.history[args.ClientId].ReqId)
+	defer kv.sl.CheckReplyMessage("KVServer.PutAppend", args, reply)
 	if kv.sl != nil {
 		kv.sl.HandleRequestMessage("KVServer.PutAppend", args)
 	}
