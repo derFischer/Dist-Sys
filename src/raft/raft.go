@@ -231,9 +231,14 @@ func (rf *Raft) readSnapshot(data []byte) {
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *Common.RequestVoteArgs, reply *Common.RequestVoteReply) {
+	if rf.sl != nil {
+		rf.sl.HandleRequestMessage("Raft.RequestVote", args)
+	}
+
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	defer rf.persist()
+	defer rf.sl.CheckReplyMessage("Raft.RequestVote", args, reply)
 
 	reply.From = rf.me
 	if args.Term < rf.CurrentTerm {
@@ -265,6 +270,7 @@ func (rf *Raft) RequestVote(args *Common.RequestVoteArgs, reply *Common.RequestV
 	if rf.VotedFor == -1 {
 		rf.VotedFor = args.CandidateId
 		reply.VoteGranted = true
+		reply.Term = rf.CurrentTerm
 		go func() {
 			rf.RequestVoteCh <- struct{}{}
 		}()
@@ -327,12 +333,16 @@ func (rf *Raft) testStaleRPC(argsPrevLogIndex int, argsPrevLogTerm int, entries 
 func (rf *Raft) AppendEntries(args *Common.AppendEntriesArgs, reply *Common.AppendEntriesReply) {
 	//fmt.Printf("server %d : APPENDENTRIES from server %d local term %d args term %d args.prevlogindex %d, commitindex %d leader commitindex %d last index %d entries: %+v\n", rf.me, args.LeaderId, rf.CurrentTerm, args.Term, args.PrevLogIndex, rf.CommitIndex, args.LeaderCommit, rf.getLastCommandIndex(), args.Entries)
 	//fmt.Println("enter: AppendEntries");
+	if rf.sl != nil {
+		rf.sl.HandleRequestMessage("Raft.AppendEntries", args)
+	}
 
 	reply.Success = false
 	reply.From = rf.me
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	defer rf.persist()
+	defer rf.sl.CheckReplyMessage("Raft.AppendEntries", args, reply)
 	//rf.checkIndx()
 
 	if args.Term < rf.CurrentTerm {
@@ -340,6 +350,12 @@ func (rf *Raft) AppendEntries(args *Common.AppendEntriesArgs, reply *Common.Appe
 		reply.Success = false
 		return
 	}
+
+	if args.Term > rf.CurrentTerm {
+		rf.CurrentTerm = args.Term
+	}
+
+	reply.Term = rf.CurrentTerm
 
 	//check if the RPC is a stale RPC
 	if args.PrevLogIndex+len(args.Entries) <= rf.getLastCommandIndex() {
@@ -404,7 +420,7 @@ func (rf *Raft) AppendEntries(args *Common.AppendEntriesArgs, reply *Common.Appe
 		}
 
 		//update current term
-		rf.CurrentTerm = args.Term
+		//rf.CurrentTerm = args.Term
 
 		//reply success
 		reply.Success = true

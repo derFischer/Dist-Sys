@@ -49,7 +49,9 @@ package labrpc
 //   pass svc to srv.AddService()
 //
 
-import "labgob"
+import (
+	"labgob"
+)
 import "bytes"
 import "reflect"
 import "sync"
@@ -528,7 +530,6 @@ func (svc *Service) dispatch(methname string, req reqMsg) replyMsg {
 		ab := bytes.NewBuffer(req.args)
 		ad := labgob.NewDecoder(ab)
 		ad.Decode(args.Interface())
-
 		// allocate space for the reply.
 		replyType := method.Type.In(2)
 		replyType = replyType.Elem()
@@ -538,14 +539,14 @@ func (svc *Service) dispatch(methname string, req reqMsg) replyMsg {
 		function := method.Func
 		function.Call([]reflect.Value{svc.rcvr, args.Elem(), replyv})
 		//send the request to simulation too
-		svc.sl.HandleRequestMessage(methname, args)
+		//svc.sl.HandleRequestMessage(methname, ad)
 		//check the reply before send back
-		svc.sl.CheckReplyMessage(methname, args, replyv)
 
 		// encode the reply.
 		rb := new(bytes.Buffer)
 		re := labgob.NewEncoder(rb)
 		re.EncodeValue(replyv)
+		//svc.sl.CheckReplyMessage(methname, ad, replyv)
 
 		return replyMsg{true, rb.Bytes()}
 	} else {

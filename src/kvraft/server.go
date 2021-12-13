@@ -67,6 +67,10 @@ func (kv *KVServer) isUpToDate(ClientId int64, ReqId int) bool {
 
 func (kv *KVServer) Get(args *Common.GetArgs, reply *Common.GetReply) {
 	//fmt.Printf("server %d receive a GET RPC %+v\n", kv.me, args)
+	if kv.sl != nil {
+		kv.sl.HandleRequestMessage("KVServer.Get", args)
+	}
+
 	if !kv.isUpToDate(args.ClientId, args.ReqId) {
 		tmp := kv.history[args.ClientId]
 		if args.ReqId == tmp.ReqId {
@@ -151,6 +155,9 @@ func (kv *KVServer) apply(entry Common.Op, index int) {
 func (kv *KVServer) PutAppend(args *Common.PutAppendArgs, reply *Common.PutAppendReply) {
 	// Your code here.
 	//fmt.Printf("server %d receive a PUTAPPEND RPC %+v local highest req id %d \n", kv.me, args, kv.history[args.ClientId].ReqId)
+	if kv.sl != nil {
+		kv.sl.HandleRequestMessage("KVServer.PutAppend", args)
+	}
 
 	if !kv.isUpToDate(args.ClientId, args.ReqId) {
 		reply.WrongLeader = false
