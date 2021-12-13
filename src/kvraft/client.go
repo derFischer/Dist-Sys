@@ -1,7 +1,6 @@
 package raftkv
 
 import (
-	"fmt"
 	"labrpc"
 )
 import "crypto/rand"
@@ -41,7 +40,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck.reqId = 0
 	ck.revId = 0
 	ck.leader = 0
-	//fmt.Printf("client %d has been made, connect to server %+v\n", ck.id, ck.servers)
+	////fmt.Printf("client %d has been made, connect to server %+v\n", ck.id, ck.servers)
 	// You'll have to add code here.
 	return ck
 }
@@ -87,17 +86,17 @@ func (ck *Clerk) Get(key string) string {
 	//tries := 0
 	//for {
 	//	tries++
-	//	//fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
+	//	////fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
 	//	go func() {
 	//		ok = ck.servers[ck.leader].Call("KVServer.Get", &args, &reply)
 	//	}()
 	//	time.Sleep(WAITTIME * time.Millisecond)
 	//	if ok || tries >= TRITIME {
-	//		//fmt.Printf("content: %+v tries: %d\n", args, tries)
+	//		////fmt.Printf("content: %+v tries: %d\n", args, tries)
 	//		break
 	//	}
 	//}
-	fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v\n", ck.id, ck.reqId, ck.leader, args)
+	//fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v\n", ck.id, ck.reqId, ck.leader, args)
 	ok := ck.servers[ck.leader].Call("KVServer.Get", &args, &reply)
 	if ok && !reply.WrongLeader {
 		if reply.Err == Common.OK {
@@ -109,13 +108,13 @@ func (ck *Clerk) Get(key string) string {
 		}
 	}
 	//else {
-	//	fmt.Printf("ok: %t, wrongleader: %t", ok, reply.WrongLeader)
+	//	//fmt.Printf("ok: %t, wrongleader: %t", ok, reply.WrongLeader)
 	//	return ""
 	//}
-	fmt.Printf("shouldn't arrive here, %+v", reply)
+	//fmt.Printf("shouldn't arrive here, %+v", reply)
 	return ""
 
-		//fmt.Printf("GET RPC %+v received reply %+v\n", args, reply)
+		////fmt.Printf("GET RPC %+v received reply %+v\n", args, reply)
 		//if ok && !reply.WrongLeader {
 		//	if reply.Err == OK {
 		//		ck.revId++
@@ -131,17 +130,17 @@ func (ck *Clerk) Get(key string) string {
 		//		tries := 0
 		//		for {
 		//			tries++
-		//			//fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
+		//			////fmt.Printf("client %d wants to send GET RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
 		//			go func() {
 		//				ok = ck.servers[i].Call("KVServer.Get", &args, &reply)
 		//			}()
 		//			time.Sleep(WAITTIME * time.Millisecond)
 		//			if ok || tries >= TRITIME {
-		//				//fmt.Printf("content: %+v tries: %d\n", args, tries)
+		//				////fmt.Printf("content: %+v tries: %d\n", args, tries)
 		//				break
 		//			}
 		//		}
-		//		//fmt.Printf("GET RPC %+v received reply %+v\n", args, reply)
+		//		////fmt.Printf("GET RPC %+v received reply %+v\n", args, reply)
 		//		if ok && !reply.WrongLeader {
 		//			ck.leader = i
 		//			if reply.Err == OK {
@@ -200,7 +199,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		}
 	}
 
-	fmt.Printf("shouldn't arrive here")
+	//fmt.Printf("shouldn't arrive here")
 	return
 
 	//first try to send the RPC to the leader which was recorded locally
@@ -210,17 +209,17 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	//	tries := 0
 	//	for {
 	//		tries++
-	//		fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
+	//		//fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
 	//		go func() {
 	//			ok = ck.servers[ck.leader].Call("KVServer.PutAppend", &args, &reply)
 	//		}()
 	//		time.Sleep(WAITTIME * time.Millisecond)
 	//		if ok || tries >= TRITIME {
-	//			//fmt.Printf("content: %+v tries: %d\n", args, tries)
+	//			////fmt.Printf("content: %+v tries: %d\n", args, tries)
 	//			break
 	//		}
 	//	}
-		//fmt.Printf("APPEND RPC %+v received reply %+v\n", args, reply)
+		////fmt.Printf("APPEND RPC %+v received reply %+v\n", args, reply)
 
 		//if ok && !reply.WrongLeader {
 		//	if reply.Err == OK {
@@ -232,23 +231,23 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		//	}
 		//} else {
 		//	for i := 0; i < len(ck.servers); i++ {
-		//		//fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v\n", ck.id, ck.reqId, i, args)
+		//		////fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v\n", ck.id, ck.reqId, i, args)
 		//		var reply PutAppendReply
 		//		var ok bool
 		//		tries := 0
 		//		for {
 		//			tries++
-		//			//fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
+		//			////fmt.Printf("client %d wants to send APPEND RPC %d to server %d content: %+v tries: %d\n", ck.id, ck.reqId, ck.leader, args, tries)
 		//			go func() {
 		//				ok = ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
 		//			}()
 		//			time.Sleep(WAITTIME * time.Millisecond)
 		//			if ok || tries >= TRITIME {
-		//				//fmt.Printf("content: %+v tries: %d\n", args, tries)
+		//				////fmt.Printf("content: %+v tries: %d\n", args, tries)
 		//				break
 		//			}
 		//		}
-		//		//fmt.Printf("APPEND RPC %+v received reply %+v\n", args, reply)
+		//		////fmt.Printf("APPEND RPC %+v received reply %+v\n", args, reply)
 		//		if ok && !reply.WrongLeader {
 		//			ck.leader = i
 		//			if reply.Err == OK {

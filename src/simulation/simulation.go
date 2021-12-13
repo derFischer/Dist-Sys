@@ -2,7 +2,6 @@ package simulation
 
 import (
 	"Common"
-	"fmt"
 	"log"
 	"reflect"
 	"sort"
@@ -143,7 +142,7 @@ func Equal(arg1 int, arg2 int) bool {
 }
 
 func SliceEqual(arg1 []Command, arg2 []Command) bool {
-	//fmt.Printf("print commands: %v, %v\n", arg1, arg2)
+	//////fmt.Printf("print commands: %v, %v\n", arg1, arg2)
 	if len(arg1) != len(arg2) {
 		return false
 	}
@@ -158,7 +157,7 @@ func SliceEqual(arg1 []Command, arg2 []Command) bool {
 			continue
 		}
 		if (!(c1.CommandIndex == c2.CommandIndex && c1.CommandTerm == c2.CommandTerm && reflect.DeepEqual(c1.Command, c2.Command))) {
-			//fmt.Printf("print command: %v, %v, %v\n", c1, c2, reflect.DeepEqual(c1.Command, c2.Command))
+			//////fmt.Printf("print command: %v, %v, %v\n", c1, c2, reflect.DeepEqual(c1.Command, c2.Command))
 			return false
 		}
 	}
@@ -330,19 +329,19 @@ func (s *Simulation) CheckReplyMessage(svcMeth string, args interface{}, reply i
 func (s *Simulation) HandleRequestMessage(svcMeth string, args interface{})  {
 	switch svcMeth {
 	case "Raft.RequestVote":
-		fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
+		//fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
 		s.RequestVoteRequestHandler(RequestVoteRequestInterPreter(args.(*Common.RequestVoteArgs)))
 	case "Raft.AppendEntries":
-		fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
+		//fmt.Printf("server %d receives request %s, args: %+v\n, self: %+v\n", s.me, svcMeth, args, s)
 		s.AppendEntryRequestHandler(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs)))
 	case "KVServer.Get":
-		fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
+		//fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
 		s.ClientRequestHandler(GetRequestInterpreter(args.(*Common.GetArgs)))
 	case "KVServer.PutAppend":
-		fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
+		//fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
 		s.ClientRequestHandler(PutRequestInterpreter(args.(*Common.PutAppendArgs)))
 	case "Timeout":
-		fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth)
+		//fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth)
 		s.TimeoutHandler()
 	}
 }
@@ -350,10 +349,10 @@ func (s *Simulation) HandleRequestMessage(svcMeth string, args interface{})  {
 func (s *Simulation) HandleReplyMessage(svcMeth string, args interface{}, reply interface{})  {
 	switch svcMeth {
 	case "Raft.RequestVote":
-		fmt.Printf("server %d receives request %s, reply: %+v\n", s.me, svcMeth, reply)
+		//fmt.Printf("server %d receives request %s, reply: %+v\n", s.me, svcMeth, reply)
 		s.RequestVoteReplyHandler(RequestVoteRequestInterPreter(args.(*Common.RequestVoteArgs)), RequestVoteReplyInterpreter(reply.(*Common.RequestVoteReply)))
 	case "Raft.AppendEntries":
-		fmt.Printf("server %d receives request %s, reply: %+v\n", s.me, svcMeth, reply)
+		//fmt.Printf("server %d receives request %s, reply: %+v\n", s.me, svcMeth, reply)
 		s.AppendEntryReplyHandler(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs)), AppendEntryReplyInterpreter(reply.(*Common.AppendEntriesReply)))
 	}
 }
@@ -365,10 +364,10 @@ func (s *Simulation) RequestVoteRequestChecker(args RequestVoteArgs) bool {
 }
 
 func (s *Simulation) AppendEntryRequestChecker(args AppendEntriesArgs) bool {
-	state_check := (s.State == Leader) && (args.mterm == s.CurrentTerm) && (args.msource == s.me) && (args.mcommitIndex == s.CommitIndex)
+	state_check := (s.State == Leader) && (args.mterm == s.CurrentTerm) && (args.msource == s.me) && (args.mcommitIndex <= s.CommitIndex)
 	params_checker := Equal(args.mprevLogTerm, s.getCommandTerm(args.mprevLogIndex)) && SliceEqual(args.mentries, s.getLogSlice(args.mprevLogIndex, len(args.mentries)))
-	fmt.Printf("request args: %+v, local state: %+v\n", args, s)
-	fmt.Printf("state_check: %+v, params_check: %+v\n", state_check, SliceEqual(args.mentries, s.getLogSlice(args.mprevLogIndex, len(args.mentries))))
+	////fmt.Printf("request args: %+v, local state: %+v\n", args, s)
+	////fmt.Printf("state_check: %+v, params_check: %+v\n", state_check, SliceEqual(args.mentries, s.getLogSlice(args.mprevLogIndex, len(args.mentries))))
 	return state_check && params_checker
 }
 
@@ -431,7 +430,7 @@ func (s *Simulation) AppendEntryRequestHandler(args AppendEntriesArgs) {
 		return
 	}
 	s.UpdateTerm(args.mterm)
-	logOK := (args.mprevLogIndex == 0) || (args.mprevLogIndex > 0 && args.mprevLogIndex < s.getLastCommandIndex() && Equal(args.mprevLogTerm, s.getCommandTerm(args.mprevLogIndex)))
+	logOK := (args.mprevLogIndex == 0) || (args.mprevLogIndex > 0 && args.mprevLogIndex <= s.getLastCommandIndex() && Equal(args.mprevLogTerm, s.getCommandTerm(args.mprevLogIndex)))
 	if args.mterm == s.CurrentTerm && s.State == Follower && !logOK {
 		return
 	}
@@ -440,6 +439,7 @@ func (s *Simulation) AppendEntryRequestHandler(args AppendEntriesArgs) {
 	}
 	if args.mterm == s.CurrentTerm && s.State == Follower && logOK {
 		s.appendEntries(args.mentries)
+		s.CommitIndex = max(s.CommitIndex, args.mcommitIndex)
 	}
 	return
 }
@@ -457,6 +457,7 @@ func (s *Simulation) RequestVoteReplyHandler(args RequestVoteArgs, reply Request
 }
 
 func (s *Simulation) AppendEntryReplyHandler(args AppendEntriesArgs, reply AppendEntriesReply) {
+	//fmt.Printf("appendentry args, %+v, reply: %+v\n", args, reply)
 	if s.DropStaleResponse(reply.mterm) {
 		return
 	}
@@ -527,6 +528,7 @@ func (s *Simulation) Leader()  {
 		s.mmatchIndex[i] = 0
 	}
 	s.mmatchIndex[s.me] = s.getLastCommandIndex()
+	//fmt.Printf("server %d becomes leader, state: %+v\n", s.me, s)
 }
 
 func (s *Simulation) updateCommitIndex()  {
