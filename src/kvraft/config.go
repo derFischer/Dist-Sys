@@ -314,7 +314,7 @@ func (cfg *config) StartServer(i int) {
 	}
 	cfg.mu.Unlock()
 
-	cfg.kvservers[i] = StartKVServer(ends, i, cfg.saved[i], cfg.maxraftstate)
+	cfg.kvservers[i] = StartKVServerWithSL(ends, i, cfg.saved[i], cfg.maxraftstate, sl)
 
 	kvsvc := labrpc.MakeServiceWithSL(cfg.kvservers[i], sl)
 	rfsvc := labrpc.MakeServiceWithSL(cfg.kvservers[i].rf, sl)

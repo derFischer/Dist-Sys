@@ -2,7 +2,9 @@ package simulation
 
 import (
 	"Common"
+	"fmt"
 	"log"
+	"sort"
 	"sync"
 )
 
@@ -112,7 +114,8 @@ func NewSL(id int, total int) *Simulation {
 	for i := 0; i  <  total; i++ {
 		matchIndex[i] = -1
 	}
-	log := make([]Command, 0)
+	log := make([]Command, 1)
+	log[0] = Command{CommandIndex: 0}
 	return &Simulation{
 		me: id,
 		State: Follower,
@@ -120,7 +123,7 @@ func NewSL(id int, total int) *Simulation {
 		VotedFor: -1,
 		Votes: votes,
 		Log: log,
-		CommitIndex: -1,
+		CommitIndex: 0,
 		mmatchIndex: matchIndex,
 	}
 }
@@ -290,10 +293,12 @@ func AppendEntryReplyInterpreter(reply *Common.AppendEntriesReply) AppendEntries
 func (s *Simulation) CheckRequestMessage(svcMeth string, args interface{})  {
 	valid := true
 	switch svcMeth {
-	case "Common.RequestVote":
+	case "Raft.RequestVote":
 		valid = s.RequestVoteRequestChecker(RequestVoteRequestInterPreter(args.(*Common.RequestVoteArgs)))
-	case "Common.AppendEntries":
+	case "Raft.AppendEntries":
 		valid = s.AppendEntryRequestChecker(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs)))
+	case "Timeout":
+		valid = s.TimeoutChecker()
 	}
 	if !valid {
 		log.Fatalf("check request message error! server: %d, method: %s, args: %+v\n", s.me, svcMeth, args)
@@ -303,9 +308,9 @@ func (s *Simulation) CheckRequestMessage(svcMeth string, args interface{})  {
 func (s *Simulation) CheckReplyMessage(svcMeth string, args interface{}, reply interface{})  {
 	valid := true
 	switch svcMeth {
-	case "Common.RequestVote":
+	case "Raft.RequestVote":
 		valid = s.RequestVoteReplyChecker(RequestVoteRequestInterPreter(args.(*Common.RequestVoteArgs)), RequestVoteReplyInterpreter(reply.(*Common.RequestVoteReply)))
-	case "Common.AppendEntries":
+	case "Raft.AppendEntries":
 		valid = s.AppendEntryReplyChecker(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs)), AppendEntryReplyInterpreter(reply.(*Common.AppendEntriesReply)))
 	case "KVServer.Get":
 		s.GetReplyChecker(GetRequestInterpreter(args.(*Common.GetArgs)), GetReplyInterpreter(reply.(*Common.GetReply)))
@@ -328,6 +333,8 @@ func (s *Simulation) HandleRequestMessage(svcMeth string, args interface{})  {
 		s.ClientRequestHandler(GetRequestInterpreter(args.(*Common.GetArgs)))
 	case "KVServer.PutAppend":
 		s.ClientRequestHandler(PutRequestInterpreter(args.(*Common.PutAppendArgs)))
+	case "Timeout":
+		s.TimeoutHandler()
 	}
 }
 
@@ -343,14 +350,18 @@ func (s *Simulation) HandleReplyMessage(svcMeth string, args interface{}, reply 
 //checker: check whether the message is correct
 
 func (s *Simulation) RequestVoteRequestChecker(args RequestVoteArgs) bool {
-
 	return s.State == Candidate && args.mterm == s.CurrentTerm && args.msource == s.me && args.mlastLogIndex == s.getLastCommandIndex() && args.mlastLogTerm == s.getLastCommandTerm()
 }
 
 func (s *Simulation) AppendEntryRequestChecker(args AppendEntriesArgs) bool {
+	fmt.Printf("request args: %+v, local state: %+v\n", args, s)
 	state_check := (s.State == Leader) && (args.mterm == s.CurrentTerm) && (args.msource == s.me) && (args.mcommitIndex == s.CommitIndex)
 	params_checker := Equal(args.mprevLogTerm, s.getCommandTerm(args.mprevLogIndex)) && SliceEqual(args.mentries, s.getLogSlice(args.mprevLogIndex, len(args.mentries)))
 	return state_check && params_checker
+}
+
+func (s *Simulation) TimeoutChecker() bool {
+	return s.State == Follower || s.State == Candidate
 }
 
 func (s *Simulation) RequestVoteReplyChecker(args RequestVoteArgs, reply RequestVoteReply) bool {
@@ -385,6 +396,7 @@ func (s *Simulation) ClientRequestHandler(args Op) {
 	if s.State == Leader {
 		command := Command{Command: args, CommandIndex: s.getLastCommandIndex() + 1}
 		s.Log = append(s.Log, command)
+		s.mmatchIndex[s.me] = s.getLastCommandIndex()
 	}
 	return
 }
@@ -439,8 +451,13 @@ func (s *Simulation) AppendEntryReplyHandler(args AppendEntriesArgs, reply Appen
 	s.UpdateTerm(reply.mterm)
 	if reply.msuccess {
 		s.mmatchIndex[reply.from] = max(reply.mmatchIndex, s.mmatchIndex[reply.from])
+		s.updateCommitIndex()
 	}
 	return
+}
+
+func (s *Simulation) TimeoutHandler()  {
+	s.Candidate()
 }
 
 
@@ -476,6 +493,16 @@ func (s *Simulation) testLeader() {
 	}
 }
 
+func (s *Simulation) Candidate()  {
+	s.State = Candidate
+	s.CurrentTerm = s.CurrentTerm + 1
+	s.VotedFor = s.me
+	for i := 0; i < s.peers; i++ {
+		s.Votes[i] = false
+	}
+	s.Votes[s.me] = true
+}
+
 func (s *Simulation) Follower()  {
 	s.State = Follower
 	s.VotedFor = -1
@@ -490,7 +517,15 @@ func (s *Simulation) Leader()  {
 	s.mmatchIndex[s.me] = s.getLastCommandIndex()
 }
 
-
+func (s *Simulation) updateCommitIndex()  {
+	majority := findMajority(s.mmatchIndex)
+	if majority > s.CommitIndex {
+		command := s.getCommand(majority)
+		if command.CommandTerm == s.CurrentTerm {
+			s.CommitIndex = max(command.CommandIndex, s.CommitIndex)
+		}
+	}
+}
 
 //helper function
 func max(a int, b int) int {
@@ -499,4 +534,12 @@ func max(a int, b int) int {
 	} else {
 		return b
 	}
+}
+
+func findMajority(array []int) int {
+	if !sort.IntsAreSorted(array) {
+		sort.Ints(array)
+	}
+	length := len(array)
+	return array[(length - 1) / 2]
 }

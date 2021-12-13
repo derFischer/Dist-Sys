@@ -27,6 +27,7 @@ import (
 	"bytes"
 	"labgob"
 	"math/rand"
+	"simulation"
 	"sort"
 )
 
@@ -97,6 +98,7 @@ type Raft struct {
 	ApplyCh chan ApplyMsg
 
 	Process bool
+	sl *simulation.Simulation
 }
 
 func (rf *Raft) calculateRealIndex(raw int) int {
@@ -896,6 +898,111 @@ func (rf *Raft) checkIndx() {
 			break
 		}
 	}
+}
+
+func MakeWithSL(peers []*labrpc.ClientEnd, me int,
+	persister *Persister, applyCh chan ApplyMsg, sl *simulation.Simulation) *Raft {
+	rf := &Raft{}
+	rf.peers = peers
+	rf.persister = persister
+	rf.me = me
+
+	// Your initialization code here (2A, 2B, 2C).
+
+	rf.CurrentTerm = 0
+	rf.VotedFor = -1
+	rf.State = Follower
+	rf.Votes = 0
+
+	rf.AppendEntryCh = make(chan struct{})
+	rf.RequestVoteCh = make(chan struct{})
+
+	rf.CommitIndex = 0
+	rf.LastApplied = 0
+	rf.sl = sl
+
+	rf.Log = make([]Common.Command, 1)
+	rf.Log[0] = Common.Command{CommandIndex: 0}
+	rf.NextIndex = make([]int, len(rf.peers))
+	rf.MatchIndex = make([]int, len(rf.peers))
+	rf.initNextIndexAndMatchIndex()
+
+	rf.ApplyCh = applyCh
+	// initialize from state persisted before a crash
+
+	rf.readPersist(persister.ReadRaftState())
+	rf.readSnapshot(persister.ReadSnapshot())
+
+	go func() {
+		rf.Timer = time.NewTimer(rf.generate_rand())
+		for {
+			if rf.Process == true {
+				break
+			}
+			switch rf.getState() {
+			case Follower:
+				select {
+				case <-rf.AppendEntryCh:
+					rf.resetTimer()
+				case <-rf.RequestVoteCh:
+					rf.resetTimer()
+				case <-rf.Timer.C:
+					if rf.sl != nil {
+						rf.sl.CheckRequestMessage("Timeout", nil)
+						rf.sl.HandleRequestMessage("Timeout", nil)
+					}
+					rf.updateToCandidate()
+				}
+			case Candidate:
+				select {
+				case <-rf.AppendEntryCh:
+					rf.resetTimer()
+					rf.updateToFollower()
+				case <-rf.Timer.C:
+					rf.Timer.Reset(rf.generate_rand())
+					if rf.sl != nil {
+						rf.sl.CheckRequestMessage("Timeout", nil)
+						rf.sl.HandleRequestMessage("Timeout", nil)
+					}
+					rf.updateToCandidate()
+				default:
+					rf.testLeader()
+				}
+			case Leader:
+				//fmt.Printf("server %d is the leader\n", rf.me)
+				select {
+				case <-rf.AppendEntryCh:
+					rf.updateToFollower()
+					rf.resetTimer()
+				default:
+					rf.broadcastAppendEntries()
+					rf.checkCommitIndex()
+					time.Sleep(HEARTBEAT * time.Millisecond)
+				}
+			}
+			//rf.checkIndx()
+			rf.mu.Lock()
+			if rf.CommitIndex > rf.LastApplied {
+				//fmt.Printf("server %d commitIndex: %d, applyindex: %d\n", rf.me, rf.CommitIndex, rf.LastApplied)
+				localCommitIndex := rf.calculateLocalIndex(rf.CommitIndex)
+				localAppliedIndex := rf.calculateLocalIndex(rf.LastApplied)
+				//fmt.Printf("server %d localCommitIndex: %d, localAppliedIndex: %d, length of log %d\n", rf.me, localCommitIndex, localAppliedIndex, len(rf.Log))
+				var i int
+				for i = localAppliedIndex + 1; i <= localCommitIndex; i++ {
+					var msg ApplyMsg
+					msg.CommandValid = true
+					msg.Command = rf.Log[i].Command
+					msg.CommandIndex = rf.Log[i].CommandIndex
+					applyCh <- msg
+					//fmt.Printf("server %d commit the command at index %d command: %+v \n", rf.me, rf.calculateRealIndex(i), rf.Log[i])
+					rf.LastApplied++
+				}
+			}
+			rf.mu.Unlock()
+
+		}
+	}()
+	return rf
 }
 
 func Make(peers []*labrpc.ClientEnd, me int,

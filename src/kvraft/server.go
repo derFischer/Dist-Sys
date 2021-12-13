@@ -7,6 +7,7 @@ import (
 	"labrpc"
 	"log"
 	"raft"
+	"simulation"
 	"sync"
 )
 
@@ -41,6 +42,7 @@ type KVServer struct {
 	history map[int64]Common.Recent
 
 	maxraftstate int // snapshot if log grows this big
+	sl *simulation.Simulation
 
 	// Your definitions here.
 }
@@ -205,6 +207,60 @@ func (kv *KVServer) Kill() {
 // StartKVServer() must return quickly, so it should start goroutines
 // for any long-running work.
 //
+func StartKVServerWithSL(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int, sl *simulation.Simulation) *KVServer {
+	labgob.Register(Common.Op{})
+
+	kv := new(KVServer)
+	kv.me = me
+	kv.maxraftstate = maxraftstate
+
+	// You may need initialization code here.
+
+	kv.applyCh = make(chan raft.ApplyMsg)
+	kv.rf = raft.MakeWithSL(servers, me, persister, kv.applyCh, sl)
+	kv.stop = false
+	kv.record = map[string]string{}
+	kv.history = map[int64]Common.Recent{}
+	kv.sl = sl
+
+	// You may need initialization code here.
+	go func() {
+		for {
+			if kv.stop {
+				break
+			}
+			select {
+			case tmp := <-kv.applyCh:
+				kv.mu.Lock()
+				if tmp.UseSnapshot {
+					r := bytes.NewBuffer(tmp.Snapshot)
+					d := labgob.NewDecoder(r)
+
+					kv.record = make(map[string]string)
+					kv.history = make(map[int64]Common.Recent)
+
+					d.Decode(&kv.record)
+					d.Decode(&kv.history)
+				} else if tmp.Command != nil {
+					kv.apply(tmp.Command.(Common.Op), tmp.CommandIndex)
+					if maxraftstate != -1 && kv.rf.GetRaftStateSize() >= (maxraftstate/2) {
+						//fmt.Printf("server %d wants to trim the raft state %d\n", kv.me, kv.rf.GetRaftStateSize())
+						w := new(bytes.Buffer)
+						e := labgob.NewEncoder(w)
+						e.Encode(kv.record)
+						e.Encode(kv.history)
+						data := w.Bytes()
+						go kv.rf.StartSnapshot(data, tmp)
+					}
+				}
+				kv.mu.Unlock()
+			}
+		}
+	}()
+
+	return kv
+}
+
 func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int) *KVServer {
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
@@ -221,6 +277,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.stop = false
 	kv.record = map[string]string{}
 	kv.history = map[int64]Common.Recent{}
+
 	// You may need initialization code here.
 	go func() {
 		for {
