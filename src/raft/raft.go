@@ -101,6 +101,16 @@ type Raft struct {
 	sl *simulation.Simulation
 }
 
+func (rf *Raft) Peers() []*labrpc.ClientEnd {
+	return rf.peers
+}
+
+func (rf *Raft) SetPeers(p []*labrpc.ClientEnd) {
+	rf.mu.Lock()
+	rf.peers = p
+	rf.mu.Unlock()
+}
+
 func (rf *Raft) calculateRealIndex(raw int) int {
 	offset := rf.Log[0].CommandIndex
 	return raw + offset
@@ -547,7 +557,6 @@ func (rf *Raft) broadcastRequestVote(args *Common.RequestVoteArgs) {
 	////fmt.Println("enter: broadcastRequestVote");
 	rf.mu.Lock()
 	term := rf.CurrentTerm
-	rf.mu.Unlock()
 	for i, _ := range rf.peers {
 		if i == rf.me {
 			continue
@@ -555,6 +564,7 @@ func (rf *Raft) broadcastRequestVote(args *Common.RequestVoteArgs) {
 			go rf.sendSingleRequestVote(i, args, term)
 		}
 	}
+	rf.mu.Unlock()
 }
 
 func (rf *Raft) sendSingleRequestVote(server int, args *Common.RequestVoteArgs, term int) {
@@ -589,7 +599,6 @@ func (rf *Raft) broadcastAppendEntries() {
 	////fmt.Printf("leader %d enter: broadcastAppendEntries", rf.me);
 	rf.mu.Lock()
 	term := rf.CurrentTerm
-	rf.mu.Unlock()
 
 	for i, _ := range rf.peers {
 		if i == rf.me {
@@ -608,6 +617,7 @@ func (rf *Raft) broadcastAppendEntries() {
 			}(i)
 		}
 	}
+	rf.mu.Unlock()
 }
 
 //send appendEntriesRPC, return true means that do not need to retry

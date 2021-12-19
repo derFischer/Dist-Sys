@@ -423,6 +423,26 @@ func GenericTestLinearizability(t *testing.T, part string, nclients int, nserver
 	}
 }
 
+func TestReconfig(t *testing.T) {
+	const nservers = 5
+	cfg := make_config(t, nservers, false, -1)
+	leader, leaderId := cfg.LegalLeader()
+	for {
+		if leader {
+			break
+		}
+		leader, leaderId = cfg.Leader()
+	}
+	t.Logf("leader id: %d, then trying to reconfig...\n", leaderId)
+	cfg.ReconfigSL(0, []int{0, 1, 2})
+	cfg.ReconfigServer(0, []int{0, 1, 2})
+	cfg.ReconfigSL(1, []int{0, 1, 2})
+	cfg.ReconfigServer(1, []int{0, 1, 2})
+	cfg.partition([]int{0, 1}, []int{2, 3, 4})
+	time.Sleep(100000)
+
+}
+
 func TestETCDStaleRead(t *testing.T) {
 	const nservers = 3
 	cfg := make_config(t, nservers, false, -1)

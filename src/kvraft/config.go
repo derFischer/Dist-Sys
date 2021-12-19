@@ -48,6 +48,7 @@ type config struct {
 	net          *labrpc.Network
 	n            int
 	kvservers    []*KVServer
+	sls			 []*simulation.Simulation
 	saved        []*raft.Persister
 	endnames     [][]string // names of each server's sending ClientEnds
 	clerks       map[*Clerk][]string
@@ -295,6 +296,7 @@ func (cfg *config) StartServer(i int) {
 	}
 
 	sl := simulation.NewSL(i, cfg.n)
+	cfg.sls[i] = sl
 	// a fresh set of ClientEnds.
 	ends := make([]*labrpc.ClientEnd, cfg.n)
 	for j := 0; j < cfg.n; j++ {
@@ -322,6 +324,14 @@ func (cfg *config) StartServer(i int) {
 	srv.AddService(kvsvc)
 	srv.AddService(rfsvc)
 	cfg.net.AddServer(i, srv)
+}
+
+func (cfg *config) ReconfigServer(id int, new_peers []int) {
+	cfg.kvservers[id].Reconfig(new_peers)
+}
+
+func (cfg *config) ReconfigSL(id int, new_peers []int)  {
+	cfg.sls[id].Reconfig(len(new_peers))
 }
 
 func (cfg *config) Leader() (bool, int) {
@@ -392,6 +402,7 @@ func make_config(t *testing.T, n int, unreliable bool, maxraftstate int) *config
 	cfg.net = labrpc.MakeNetwork()
 	cfg.n = n
 	cfg.kvservers = make([]*KVServer, cfg.n)
+	cfg.sls = make([]*simulation.Simulation, cfg.n)
 	cfg.saved = make([]*raft.Persister, cfg.n)
 	cfg.endnames = make([][]string, cfg.n)
 	cfg.clerks = make(map[*Clerk][]string)

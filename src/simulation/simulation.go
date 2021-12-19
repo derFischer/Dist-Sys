@@ -566,6 +566,10 @@ func (s *Simulation) updateCommitIndex()  {
 	}
 }
 
+func (s *Simulation) Reconfig(peers int)  {
+	s.peers = peers
+}
+
 //helper function
 func max(a int, b int) int {
 	if a > b {

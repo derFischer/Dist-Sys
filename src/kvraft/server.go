@@ -212,6 +212,15 @@ func (kv *KVServer) Kill() {
 	// Your code here, if desired.
 }
 
+func (kv *KVServer) Reconfig(peers []int)  {
+	num := len(peers)
+	p := make([]*labrpc.ClientEnd, num)
+	for i := 0; i < num; i++ {
+		p[i] = kv.rf.Peers()[peers[i]]
+	}
+	kv.rf.SetPeers(p)
+}
+
 //
 // servers[] contains the ports of the set of
 // servers that will cooperate via Raft to
