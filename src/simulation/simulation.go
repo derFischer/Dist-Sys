@@ -102,10 +102,11 @@ type Simulation struct {
 	Log []Command
 	CommitIndex int
 	mmatchIndex []int
-	peers int
+	peers []int
 }
 
-func NewSL(id int, total int) *Simulation {
+func NewSL(id int, peers []int) *Simulation {
+	total := len(peers)
 	votes := make([]bool, total)
 	for i :=0 ; i < total; i++ {
 		votes[i] = false
@@ -125,7 +126,7 @@ func NewSL(id int, total int) *Simulation {
 		Log: log,
 		CommitIndex: 0,
 		mmatchIndex: matchIndex,
-		peers: total,
+		peers: peers,
 	}
 }
 
@@ -142,7 +143,7 @@ func Equal(arg1 int, arg2 int) bool {
 }
 
 func SliceEqual(arg1 []Command, arg2 []Command) bool {
-	//////fmt.Printf("print commands: %v, %v\n", arg1, arg2)
+	////////fmt.Printf("print commands: %v, %v\n", arg1, arg2)
 	if len(arg1) != len(arg2) {
 		return false
 	}
@@ -157,7 +158,7 @@ func SliceEqual(arg1 []Command, arg2 []Command) bool {
 			continue
 		}
 		if (!(c1.CommandIndex == c2.CommandIndex && c1.CommandTerm == c2.CommandTerm && reflect.DeepEqual(c1.Command, c2.Command))) {
-			//////fmt.Printf("print command: %v, %v, %v\n", c1, c2, reflect.DeepEqual(c1.Command, c2.Command))
+			////////fmt.Printf("print command: %v, %v, %v\n", c1, c2, reflect.DeepEqual(c1.Command, c2.Command))
 			return false
 		}
 	}
@@ -241,6 +242,14 @@ func (s *Simulation) appendEntries(entries []Command)  {
 		}
 		s.Log[current_index] = command
 	}
+}
+
+func (s *Simulation) inConfig() bool {
+	in, _ := inSlice(s.peers, s.me)
+	if !in {
+		log.Printf("server %d not in config, but tries to send out messages\n", s.me)
+	}
+	return in
 }
 
 //Interpreter: interpret the message to simulation
@@ -333,19 +342,19 @@ func (s *Simulation) CheckReplyMessage(svcMeth string, args interface{}, reply i
 func (s *Simulation) HandleRequestMessage(svcMeth string, args interface{}) interface{} {
 	switch svcMeth {
 	case "Raft.RequestVote":
-		//fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
+		////fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
 		return s.RequestVoteRequestHandler(RequestVoteRequestInterPreter(args.(*Common.RequestVoteArgs)))
 	case "Raft.AppendEntries":
-		//fmt.Printf("server %d receives request %s, args: %+v\n, self: %+v\n", s.me, svcMeth, args, s)
+		////fmt.Printf("server %d receives request %s, args: %+v\n, self: %+v\n", s.me, svcMeth, args, s)
 		return s.AppendEntryRequestHandler(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs)))
 	case "KVServer.Get":
-		//fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
+		////fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
 		s.ClientRequestHandler(GetRequestInterpreter(args.(*Common.GetArgs)))
 	case "KVServer.PutAppend":
-		//fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
+		////fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
 		s.ClientRequestHandler(PutRequestInterpreter(args.(*Common.PutAppendArgs)))
 	case "Timeout":
-		//fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth)
+		////fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth)
 		s.TimeoutHandler()
 	}
 	return nil
@@ -354,10 +363,10 @@ func (s *Simulation) HandleRequestMessage(svcMeth string, args interface{}) inte
 func (s *Simulation) HandleReplyMessage(svcMeth string, args interface{}, reply interface{})  {
 	switch svcMeth {
 	case "Raft.RequestVote":
-		//fmt.Printf("server %d receives request %s, reply: %+v\n", s.me, svcMeth, reply)
+		////fmt.Printf("server %d receives request %s, reply: %+v\n", s.me, svcMeth, reply)
 		s.RequestVoteReplyHandler(RequestVoteRequestInterPreter(args.(*Common.RequestVoteArgs)), RequestVoteReplyInterpreter(reply.(*Common.RequestVoteReply)))
 	case "Raft.AppendEntries":
-		//fmt.Printf("server %d receives request %s, reply: %+v\n", s.me, svcMeth, reply)
+		////fmt.Printf("server %d receives request %s, reply: %+v\n", s.me, svcMeth, reply)
 		s.AppendEntryReplyHandler(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs)), AppendEntryReplyInterpreter(reply.(*Common.AppendEntriesReply)))
 	}
 }
@@ -365,19 +374,19 @@ func (s *Simulation) HandleReplyMessage(svcMeth string, args interface{}, reply 
 //checker: check whether the message is correct
 
 func (s *Simulation) RequestVoteRequestChecker(args RequestVoteArgs) bool {
-	return s.State == Candidate && args.mterm == s.CurrentTerm && args.msource == s.me && args.mlastLogIndex == s.getLastCommandIndex() && args.mlastLogTerm == s.getLastCommandTerm()
+	return s.inConfig() && (s.State == Candidate && args.mterm == s.CurrentTerm && args.msource == s.me && args.mlastLogIndex == s.getLastCommandIndex() && args.mlastLogTerm == s.getLastCommandTerm())
 }
 
 func (s *Simulation) AppendEntryRequestChecker(args AppendEntriesArgs) bool {
 	state_check := (s.State == Leader) && (args.mterm == s.CurrentTerm) && (args.msource == s.me) && (args.mcommitIndex <= s.CommitIndex)
 	params_checker := Equal(args.mprevLogTerm, s.getCommandTerm(args.mprevLogIndex)) && SliceEqual(args.mentries, s.getLogSlice(args.mprevLogIndex, len(args.mentries)))
-	////fmt.Printf("request args: %+v, local state: %+v\n", args, s)
-	////fmt.Printf("state_check: %+v, params_check: %+v\n", state_check, SliceEqual(args.mentries, s.getLogSlice(args.mprevLogIndex, len(args.mentries))))
-	return state_check && params_checker
+	//////fmt.Printf("request args: %+v, local state: %+v\n", args, s)
+	//////fmt.Printf("state_check: %+v, params_check: %+v\n", state_check, SliceEqual(args.mentries, s.getLogSlice(args.mprevLogIndex, len(args.mentries))))
+	return s.inConfig() && (state_check && params_checker)
 }
 
 func (s *Simulation) TimeoutChecker() bool {
-	return s.State == Follower || s.State == Candidate
+	return s.inConfig() && (s.State == Follower || s.State == Candidate)
 }
 
 //func (s *Simulation) RequestVoteReplyChecker(args RequestVoteArgs, reply RequestVoteReply) bool {
@@ -393,24 +402,24 @@ func (s *Simulation) TimeoutChecker() bool {
 //}
 
 func (s *Simulation) RequestVoteReplyChecker(args RequestVoteReply, reply RequestVoteReply) bool {
-	return args == reply
+	return s.inConfig() && args == reply
 }
 
 func (s *Simulation) AppendEntryReplyChecker(args AppendEntriesReply, reply AppendEntriesReply) bool {
-	return args == reply
+	return s.inConfig() && args == reply
 }
 
 func (s *Simulation) GetReplyChecker(args Op, reply GetReply) bool {
 	found, command := s.entryInLog(args)
 	key_in_log, value := s.Get(args.Key, command.CommandIndex)
 	commit := s.CommitIndex >= command.CommandIndex
-	return !reply.Success || !found || !key_in_log || value == reply.Value && commit
+	return s.inConfig() && (!reply.Success || !found || !key_in_log || value == reply.Value && commit)
 }
 
 func (s *Simulation) PutReplyChecker(args Op, reply PutAppendReply) bool {
 	found, command := s.entryInLog(args)
 	commit := s.CommitIndex >= command.CommandIndex
-	return !reply.Success || !found ||  commit
+	return s.inConfig() && (!reply.Success || !found ||  commit)
 }
 
 
@@ -426,8 +435,9 @@ func (s *Simulation) ClientRequestHandler(args Op) {
 }
 
 func (s *Simulation) RequestVoteRequestHandler(args RequestVoteArgs) RequestVoteReply {
+	//fmt.Printf("server %d receives vote request, args: %+v\n, local: %+v\n", s.me, args, s)
 	r := RequestVoteReply{From: s.me}
-	if s.DropStaleResponse(args.mterm) {
+	if s.DropStaleResponse(args.mterm) || s.DropUnknownServer(args.From) {
 		r.mterm = s.CurrentTerm
 		r.mvoteGranted = false
 		return r
@@ -445,7 +455,7 @@ func (s *Simulation) RequestVoteRequestHandler(args RequestVoteArgs) RequestVote
 
 func (s *Simulation) AppendEntryRequestHandler(args AppendEntriesArgs) AppendEntriesReply {
 	r := AppendEntriesReply{From: s.me}
-	if s.DropStaleResponse(args.mterm) {
+	if s.DropStaleResponse(args.mterm) || s.DropUnknownServer(args.From) {
 		r.mterm = s.CurrentTerm
 		r.msuccess = false
 		return r
@@ -470,25 +480,27 @@ func (s *Simulation) AppendEntryRequestHandler(args AppendEntriesArgs) AppendEnt
 }
 
 func (s *Simulation) RequestVoteReplyHandler(args RequestVoteArgs, reply RequestVoteReply) {
-	if s.DropStaleResponse(reply.mterm) {
+	if s.DropStaleResponse(reply.mterm) || s.DropUnknownServer(reply.From) {
 		return
 	}
 	s.UpdateTerm(reply.mterm)
 	if reply.mvoteGranted {
-		s.Votes[reply.From] = true
+		_, pos := inSlice(s.peers, reply.From)
+		s.Votes[pos] = true
 		s.testLeader()
 	}
 	return
 }
 
 func (s *Simulation) AppendEntryReplyHandler(args AppendEntriesArgs, reply AppendEntriesReply) {
-	//fmt.Printf("appendentry args, %+v, reply: %+v\n", args, reply)
-	if s.DropStaleResponse(reply.mterm) {
+	////fmt.Printf("appendentry args, %+v, reply: %+v\n", args, reply)
+	if s.DropStaleResponse(reply.mterm) || s.DropUnknownServer(reply.From) {
 		return
 	}
 	s.UpdateTerm(reply.mterm)
 	if reply.msuccess {
-		s.mmatchIndex[reply.From] = max(args.mprevLogIndex + len(args.mentries), s.mmatchIndex[reply.From])
+		_, pos := inSlice(s.peers, reply.From)
+		s.mmatchIndex[pos] = max(args.mprevLogIndex + len(args.mentries), s.mmatchIndex[pos])
 		s.updateCommitIndex()
 	}
 	return
@@ -508,6 +520,15 @@ func (s *Simulation) DropStaleResponse(mterm int) bool {
 	return false
 }
 
+func (s *Simulation) DropUnknownServer(id int) bool {
+	in, _ := inSlice(s.peers, id)
+	if in {
+		return false
+	} else {
+		return true
+	}
+}
+
 func (s *Simulation) UpdateTerm(mterm int) {
 	if mterm > s.CurrentTerm {
 		s.CurrentTerm = mterm
@@ -521,12 +542,12 @@ func (s *Simulation) testLeader() {
 	}
 	votes := 0
 	var i int
-	for i = 0; i < s.peers; i++ {
+	for i = 0; i < len(s.peers); i++ {
 		if s.Votes[i] == true {
 			votes += 1
 		}
 	}
-	if votes > s.peers/2 {
+	if votes > len(s.peers)/2 {
 		s.Leader()
 	}
 }
@@ -535,7 +556,7 @@ func (s *Simulation) Candidate()  {
 	s.State = Candidate
 	s.CurrentTerm = s.CurrentTerm + 1
 	s.VotedFor = s.me
-	for i := 0; i < s.peers; i++ {
+	for i := 0; i < len(s.peers); i++ {
 		s.Votes[i] = false
 	}
 	s.Votes[s.me] = true
@@ -549,11 +570,11 @@ func (s *Simulation) Follower()  {
 func (s *Simulation) Leader()  {
 	var i int
 	s.State = Leader
-	for i = 0; i < s.peers; i++ {
+	for i = 0; i < len(s.peers); i++ {
 		s.mmatchIndex[i] = 0
 	}
 	s.mmatchIndex[s.me] = s.getLastCommandIndex()
-	//fmt.Printf("server %d becomes leader, state: %+v\n", s.me, s)
+	////fmt.Printf("server %d becomes leader, state: %+v\n", s.me, s)
 }
 
 func (s *Simulation) updateCommitIndex()  {
@@ -566,8 +587,25 @@ func (s *Simulation) updateCommitIndex()  {
 	}
 }
 
-func (s *Simulation) Reconfig(peers int)  {
+func (s *Simulation) Reconfig(peers []int)  {
+	old_peers := s.peers
+	old_matchindex := s.mmatchIndex
+	old_votes := s.Votes
 	s.peers = peers
+	total := len(peers)
+	s.mmatchIndex = make([]int, total)
+	s.Votes = make([]bool, total)
+	for i := 0; i < total; i++ {
+		p := peers[i]
+		in, pos := inSlice(old_peers, p)
+		if in {
+			s.mmatchIndex[i] = old_matchindex[pos]
+			s.Votes[i] = old_votes[pos]
+		} else {
+			s.mmatchIndex[i] = -1
+			s.Votes[i] = false
+		}
+	}
 }
 
 //helper function
@@ -585,4 +623,14 @@ func findMajority(array []int) int {
 	}
 	length := len(array)
 	return array[(length - 1) / 2]
+}
+
+func inSlice(s []int, e int) (bool, int) {
+	length := len(s)
+	for i := 0; i < length; i++ {
+		if s[i] == e {
+			return true, i
+		}
+	}
+	return false, -1
 }

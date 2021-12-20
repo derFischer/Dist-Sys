@@ -426,20 +426,53 @@ func GenericTestLinearizability(t *testing.T, part string, nclients int, nserver
 func TestReconfig(t *testing.T) {
 	const nservers = 5
 	cfg := make_config(t, nservers, false, -1)
+	cfg.UnblockElec(0)
+
 	leader, leaderId := cfg.LegalLeader()
 	for {
 		if leader {
 			break
 		}
-		leader, leaderId = cfg.Leader()
+		leader, leaderId = cfg.LegalLeader()
 	}
+
+	if leaderId != 0 {
+		t.Fatalf("leader is not 0, something goes wrong...")
+	}
+
 	t.Logf("leader id: %d, then trying to reconfig...\n", leaderId)
-	cfg.ReconfigSL(0, []int{0, 1, 2})
-	cfg.ReconfigServer(0, []int{0, 1, 2})
-	cfg.ReconfigSL(1, []int{0, 1, 2})
-	cfg.ReconfigServer(1, []int{0, 1, 2})
-	cfg.partition([]int{0, 1}, []int{2, 3, 4})
-	time.Sleep(100000)
+
+
+	select {
+	case <- time.After(5 * time.Second):
+		cfg.partition([]int{leaderId, (leaderId + 1) % nservers}, []int{(leaderId + 2) % nservers, (leaderId + 3) % nservers, (leaderId + 4) % nservers})
+
+		//leader, leader + 1 switch to the new config
+		cfg.ReconfigSL(leaderId, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
+		cfg.ReconfigServer(leaderId, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
+		cfg.ReconfigSL((leaderId + 1) % nservers, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
+		cfg.ReconfigServer((leaderId + 1) % nservers, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
+
+		//others remain the same
+		cfg.ReconfigSL((leaderId + 2) % nservers, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
+		cfg.ReconfigSL((leaderId + 3) % nservers, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
+		cfg.ReconfigSL((leaderId + 4) % nservers, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
+		cfg.UnblockElec((leaderId + 2) % nservers)
+	}
+
+	num, leaders := cfg.AllLeaders()
+	for {
+		if num > 1 {
+			break
+		}
+		num, leaders = cfg.AllLeaders()
+	}
+	t.Logf("leaders id: %+v, then trying to send append request...\n", leaders)
+	select {
+	case <- time.After(5 * time.Second):
+		break
+	}
+
 
 }
 

@@ -221,6 +221,13 @@ func (kv *KVServer) Reconfig(peers []int)  {
 	kv.rf.SetPeers(p)
 }
 
+func (kv *KVServer) BlockElec()  {
+	kv.rf.BlockElec()
+}
+
+func (kv *KVServer) UnblockElec()  {
+	kv.rf.UnblockElec()
+}
 //
 // servers[] contains the ports of the set of
 // servers that will cooperate via Raft to
@@ -250,6 +257,7 @@ func StartKVServerWithSL(servers []*labrpc.ClientEnd, me int, persister *raft.Pe
 	kv.record = map[string]string{}
 	kv.history = map[int64]Common.Recent{}
 	kv.sl = sl
+	kv.BlockElec()
 
 	// You may need initialization code here.
 	go func() {

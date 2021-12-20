@@ -291,11 +291,13 @@ func (cfg *config) StartServer(i int) {
 
 	// a fresh set of outgoing ClientEnd names.
 	cfg.endnames[i] = make([]string, cfg.n)
+	peers := make([]int, cfg.n)
 	for j := 0; j < cfg.n; j++ {
 		cfg.endnames[i][j] = randstring(20)
+		peers[j] = j
 	}
 
-	sl := simulation.NewSL(i, cfg.n)
+	sl := simulation.NewSL(i, peers)
 	cfg.sls[i] = sl
 	// a fresh set of ClientEnds.
 	ends := make([]*labrpc.ClientEnd, cfg.n)
@@ -331,7 +333,15 @@ func (cfg *config) ReconfigServer(id int, new_peers []int) {
 }
 
 func (cfg *config) ReconfigSL(id int, new_peers []int)  {
-	cfg.sls[id].Reconfig(len(new_peers))
+	cfg.sls[id].Reconfig(new_peers)
+}
+
+func (cfg *config) BlockElec(id int)  {
+	cfg.kvservers[id].BlockElec()
+}
+
+func (cfg *config) UnblockElec(id int)  {
+	cfg.kvservers[id].UnblockElec()
 }
 
 func (cfg *config) Leader() (bool, int) {
@@ -355,16 +365,34 @@ func (cfg *config) LegalLeader() (bool, int) {
 	curr_is_leader := false
 	leader_id := -1
 	for i := 0; i < cfg.n; i++ {
-		term, is_leader := cfg.kvservers[i].rf.GetState()
-		if is_leader {
-			if term > curr_term {
-				curr_term = term
-				curr_is_leader = true
-				leader_id = i
+		if cfg.kvservers[i] != nil {
+			term, is_leader := cfg.kvservers[i].rf.GetState()
+			if is_leader {
+				if term > curr_term {
+					curr_term = term
+					curr_is_leader = true
+					leader_id = i
+				}
 			}
 		}
 	}
 	return curr_is_leader, leader_id
+}
+
+func (cfg *config) AllLeaders() (int, []int) {
+	cfg.mu.Lock()
+	defer cfg.mu.Unlock()
+
+	num := 0
+	leader_id := make([]int, 0)
+	for i := 0; i < cfg.n; i++ {
+		_, is_leader := cfg.kvservers[i].rf.GetState()
+		if is_leader {
+			num = num + 1
+			leader_id = append(leader_id, i)
+		}
+	}
+	return num, leader_id
 }
 
 // Partition servers into 2 groups and put current leader in minority
