@@ -616,7 +616,6 @@ func (rf *Raft) sendSingleRequestVote(server int, args *Common.RequestVoteArgs, 
 		if reply.VoteGranted == true {
 			rf.Votes += 1
 			//fmt.Printf("server %d from server %d : GET ONE VOTE !!!!!!! current vote: %d\n", rf.me, server, rf.Votes)
-			rf.testLeader()
 		} else if reply.Term > rf.CurrentTerm {
 			rf.CurrentTerm = reply.Term
 			rf.updateState(Follower)
@@ -1022,10 +1021,6 @@ func MakeWithSL(peers []*labrpc.ClientEnd, me int,
 					if rf.block_elec {
 						continue
 					}
-					if rf.sl != nil {
-						rf.sl.CheckRequestMessage("Timeout", nil)
-						rf.sl.HandleRequestMessage("Timeout", nil)
-					}
 					rf.updateToCandidate()
 				}
 			case Candidate:
@@ -1035,13 +1030,9 @@ func MakeWithSL(peers []*labrpc.ClientEnd, me int,
 					rf.updateToFollower()
 				case <-rf.Timer.C:
 					rf.Timer.Reset(rf.generate_rand())
-					if rf.sl != nil {
-						rf.sl.CheckRequestMessage("Timeout", nil)
-						rf.sl.HandleRequestMessage("Timeout", nil)
-					}
 					rf.updateToCandidate()
 				default:
-					//rf.testLeader()
+					rf.testLeader()
 				}
 			case Leader:
 				//////fmt.Printf("server %d is the leader\n", rf.me)
@@ -1138,7 +1129,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 					rf.Timer.Reset(rf.generate_rand())
 					rf.updateToCandidate()
 				default:
-					//rf.testLeader()
+					rf.testLeader()
 				}
 			case Leader:
 				//////fmt.Printf("server %d is the leader\n", rf.me)

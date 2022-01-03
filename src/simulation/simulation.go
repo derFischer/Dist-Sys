@@ -309,8 +309,6 @@ func (s *Simulation) CheckRequestMessage(svcMeth string, args interface{})  {
 		valid = s.RequestVoteRequestChecker(RequestVoteRequestInterPreter(args.(*Common.RequestVoteArgs)))
 	case "Raft.AppendEntries":
 		valid = s.AppendEntryRequestChecker(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs)))
-	case "Timeout":
-		valid = s.TimeoutChecker()
 	}
 	if !valid {
 		log.Fatalf("check request message error! server: %d, method: %s, args: %+v\n local state: %+v\n", s.me, svcMeth, args, s)
@@ -353,9 +351,6 @@ func (s *Simulation) HandleRequestMessage(svcMeth string, args interface{}) inte
 	case "KVServer.PutAppend":
 		////fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
 		s.ClientRequestHandler(PutRequestInterpreter(args.(*Common.PutAppendArgs)))
-	case "Timeout":
-		////fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth)
-		s.TimeoutHandler()
 	}
 	return nil
 }
@@ -374,10 +369,22 @@ func (s *Simulation) HandleReplyMessage(svcMeth string, args interface{}, reply 
 //checker: check whether the message is correct
 
 func (s *Simulation) RequestVoteRequestChecker(args RequestVoteArgs) bool {
+	if s.State != Candidate {
+		if !s.TimeoutChecker() {
+			return false
+		}
+		s.Candidate()
+	}
 	return s.inConfig() && (s.State == Candidate && args.mterm == s.CurrentTerm && args.msource == s.me && args.mlastLogIndex == s.getLastCommandIndex() && args.mlastLogTerm == s.getLastCommandTerm())
 }
 
 func (s *Simulation) AppendEntryRequestChecker(args AppendEntriesArgs) bool {
+	if s.State != Leader {
+		if !s.testLeader() {
+			return false
+		}
+		s.Leader()
+	}
 	state_check := (s.State == Leader) && (args.mterm == s.CurrentTerm) && (args.msource == s.me) && (args.mcommitIndex <= s.CommitIndex)
 	params_checker := Equal(args.mprevLogTerm, s.getCommandTerm(args.mprevLogIndex)) && SliceEqual(args.mentries, s.getLogSlice(args.mprevLogIndex, len(args.mentries)))
 	//////fmt.Printf("request args: %+v, local state: %+v\n", args, s)
@@ -387,6 +394,10 @@ func (s *Simulation) AppendEntryRequestChecker(args AppendEntriesArgs) bool {
 
 func (s *Simulation) TimeoutChecker() bool {
 	return s.inConfig() && (s.State == Follower || s.State == Candidate)
+}
+
+func (s *Simulation) BecomeLeaderChecker() bool {
+	return s.inConfig() && s.testLeader()
 }
 
 //func (s *Simulation) RequestVoteReplyChecker(args RequestVoteArgs, reply RequestVoteReply) bool {
@@ -487,7 +498,7 @@ func (s *Simulation) RequestVoteReplyHandler(args RequestVoteArgs, reply Request
 	if reply.mvoteGranted {
 		_, pos := inSlice(s.peers, reply.From)
 		s.Votes[pos] = true
-		s.testLeader()
+		//s.testLeader()
 	}
 	return
 }
@@ -504,10 +515,6 @@ func (s *Simulation) AppendEntryReplyHandler(args AppendEntriesArgs, reply Appen
 		s.updateCommitIndex()
 	}
 	return
-}
-
-func (s *Simulation) TimeoutHandler()  {
-	s.Candidate()
 }
 
 
@@ -536,9 +543,9 @@ func (s *Simulation) UpdateTerm(mterm int) {
 	}
 }
 
-func (s *Simulation) testLeader() {
+func (s *Simulation) testLeader() bool {
 	if s.State != Candidate {
-		return
+		return false
 	}
 	votes := 0
 	var i int
@@ -548,8 +555,9 @@ func (s *Simulation) testLeader() {
 		}
 	}
 	if votes > len(s.peers)/2 {
-		s.Leader()
+		return true
 	}
+	return false
 }
 
 func (s *Simulation) Candidate()  {

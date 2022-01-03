@@ -455,9 +455,10 @@ func TestReconfig(t *testing.T) {
 
 		//others remain the same
 		cfg.ReconfigSL((leaderId + 2) % nservers, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
-		cfg.ReconfigSL((leaderId + 3) % nservers, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
-		cfg.ReconfigSL((leaderId + 4) % nservers, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
-		cfg.UnblockElec((leaderId + 2) % nservers)
+		//cfg.ReconfigSL((leaderId + 3) % nservers, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
+		//cfg.ReconfigSL((leaderId + 4) % nservers, []int{leaderId, (leaderId + 1) % nservers, (leaderId + 2) % nservers})
+		//cfg.UnblockElec((leaderId + 2) % nservers)
+		cfg.UnblockElec((leaderId + 4) % nservers)
 	}
 
 	num, leaders := cfg.AllLeaders()
