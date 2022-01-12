@@ -88,7 +88,6 @@ type PutAppendReply struct {
 	Success bool
 }
 
-
 //
 // A Go object implementing a single Raft peer.
 //
@@ -103,9 +102,10 @@ type Simulation struct {
 	CommitIndex int
 	mmatchIndex []int
 	peers []int
+	MsgCh chan Common.Msg
 }
 
-func NewSL(id int, peers []int) *Simulation {
+func StartSimulationServer(id int, peers []int) *Simulation {
 	total := len(peers)
 	votes := make([]bool, total)
 	for i :=0 ; i < total; i++ {
@@ -117,17 +117,40 @@ func NewSL(id int, peers []int) *Simulation {
 	}
 	log := make([]Command, 1)
 	log[0] = Command{CommandIndex: 0}
-	return &Simulation{
-		me: id,
-		State: Follower,
-		CurrentTerm: 0,
-		VotedFor: -1,
-		Votes: votes,
-		Log: log,
-		CommitIndex: 0,
-		mmatchIndex: matchIndex,
-		peers: peers,
-	}
+
+	sl := new(Simulation)
+	sl.me = id
+	sl.State = Follower
+	sl.CurrentTerm = 0
+	sl.VotedFor = -1
+	sl.Votes = votes
+	sl.Log = log
+	sl.CommitIndex = 0
+	sl.mmatchIndex = matchIndex
+	sl.peers = peers
+	sl.MsgCh = make(chan Common.Msg)
+
+	go func() {
+		for {
+			select {
+			case msg := <- sl.MsgCh:
+				if msg.Send {
+					if msg.Request {
+						sl.CheckRequestMessage(msg.Meth, msg.Args)
+					} else {
+						sl.CheckReplyMessage(msg.Meth, msg.Args, msg.Reply)
+					}
+				} else {
+					if msg.Request {
+						sl.HandleRequestMessage(msg.Meth, msg.Args, msg.Reply)
+					} else {
+						sl.HandleReplyMessage(msg.Meth, msg.Args, msg.Reply)
+					}
+				}
+			}
+		}
+	}()
+	return sl
 }
 
 //helper function
@@ -322,10 +345,10 @@ func (s *Simulation) CheckReplyMessage(svcMeth string, args interface{}, reply i
 	//	valid = s.RequestVoteReplyChecker(RequestVoteRequestInterPreter(args.(*Common.RequestVoteArgs)), RequestVoteReplyInterpreter(reply.(*Common.RequestVoteReply)))
 	//case "Raft.AppendEntries":
 	//	valid = s.AppendEntryReplyChecker(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs)), AppendEntryReplyInterpreter(reply.(*Common.AppendEntriesReply)))
-	case "Raft.RequestVote":
-		valid = s.RequestVoteReplyChecker(RequestVoteReplyInterpreter(args.(*Common.RequestVoteReply)), reply.(RequestVoteReply))
-	case "Raft.AppendEntries":
-		valid = s.AppendEntryReplyChecker(AppendEntryReplyInterpreter(args.(*Common.AppendEntriesReply)), reply.(AppendEntriesReply))
+	//case "Raft.RequestVote":
+	//	valid = s.RequestVoteReplyChecker(RequestVoteReplyInterpreter(args.(*Common.RequestVoteReply)), reply.(RequestVoteReply))
+	//case "Raft.AppendEntries":
+	//	valid = s.AppendEntryReplyChecker(AppendEntryReplyInterpreter(args.(*Common.AppendEntriesReply)), reply.(AppendEntriesReply))
 	case "KVServer.Get":
 		valid = s.GetReplyChecker(GetRequestInterpreter(args.(*Common.GetArgs)), GetReplyInterpreter(reply.(*Common.GetReply)))
 	case "KVServer.PutAppend":
@@ -337,14 +360,16 @@ func (s *Simulation) CheckReplyMessage(svcMeth string, args interface{}, reply i
 }
 
 //handler function: update the simulation state once receives the requests
-func (s *Simulation) HandleRequestMessage(svcMeth string, args interface{}) interface{} {
+func (s *Simulation) HandleRequestMessage(svcMeth string, args interface{}, reply interface{}) {
+	valid := true
 	switch svcMeth {
 	case "Raft.RequestVote":
 		////fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
-		return s.RequestVoteRequestHandler(RequestVoteRequestInterPreter(args.(*Common.RequestVoteArgs)))
+		valid = s.RequestVoteReplyChecker(RequestVoteReplyInterpreter(reply.(*Common.RequestVoteReply)), s.RequestVoteRequestHandler(RequestVoteRequestInterPreter(args.(*Common.RequestVoteArgs))))
 	case "Raft.AppendEntries":
 		////fmt.Printf("server %d receives request %s, args: %+v\n, self: %+v\n", s.me, svcMeth, args, s)
-		return s.AppendEntryRequestHandler(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs)))
+		valid = s.AppendEntryReplyChecker(AppendEntryReplyInterpreter(reply.(*Common.AppendEntriesReply)), s.AppendEntryRequestHandler(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs))))
+		//return s.AppendEntryRequestHandler(AppendEntryRequestInterPreter(args.(*Common.AppendEntriesArgs)))
 	case "KVServer.Get":
 		////fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
 		s.ClientRequestHandler(GetRequestInterpreter(args.(*Common.GetArgs)))
@@ -352,7 +377,9 @@ func (s *Simulation) HandleRequestMessage(svcMeth string, args interface{}) inte
 		////fmt.Printf("server %d receives request %s, args: %+v\n", s.me, svcMeth, args)
 		s.ClientRequestHandler(PutRequestInterpreter(args.(*Common.PutAppendArgs)))
 	}
-	return nil
+	if !valid {
+		log.Fatalf("check reply message error! server: %d, method: %s, args: %+v, reply: %+v\n local state: %+v\n", s.me, svcMeth, args, reply, s)
+	}
 }
 
 func (s *Simulation) HandleReplyMessage(svcMeth string, args interface{}, reply interface{})  {
@@ -516,7 +543,6 @@ func (s *Simulation) AppendEntryReplyHandler(args AppendEntriesArgs, reply Appen
 	}
 	return
 }
-
 
 
 //other functions

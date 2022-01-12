@@ -50,6 +50,7 @@ package labrpc
 //
 
 import (
+	"Common"
 	"labgob"
 )
 import "bytes"
@@ -62,7 +63,6 @@ import "time"
 import (
 	"sync/atomic"
 )
-import "simulation"
 
 type reqMsg struct {
 	endname  interface{} // name of sending ClientEnd
@@ -81,7 +81,7 @@ type ClientEnd struct {
 	endname interface{}   // this end-point's name
 	ch      chan reqMsg   // copy of Network.endCh
 	done    chan struct{} // closed when Network is cleaned up
-	sl		*simulation.Simulation //simulation layer
+	sl		chan Common.Msg //simulation layer
 }
 
 // send an RPC, wait for the reply.
@@ -89,7 +89,8 @@ type ClientEnd struct {
 // no reply was received from the server.
 func (e *ClientEnd) Call(svcMeth string, args interface{}, reply interface{}) bool {
 	//check the message before call:
-	e.sl.CheckRequestMessage(svcMeth, args)
+	//e.sl.CheckRequestMessage(svcMeth, args)
+	e.sl <- Common.Msg{Send: true, Request: true, Meth: svcMeth, Args: args}
 
 	req := reqMsg{}
 	req.endname = e.endname
@@ -117,7 +118,8 @@ func (e *ClientEnd) Call(svcMeth string, args interface{}, reply interface{}) bo
 			log.Fatalf("ClientEnd.Call(): decode reply: %v\n", err)
 		}
 		//send back the reply
-		e.sl.HandleReplyMessage(svcMeth, args, reply)
+		//e.sl.HandleReplyMessage(svcMeth, args, reply)
+		e.sl <- Common.Msg{Send: false, Request: false, Meth: svcMeth, Args: args, Reply: reply}
 		return true
 	} else {
 		return false
@@ -306,7 +308,7 @@ func (rn *Network) ProcessReq(req reqMsg) {
 
 }
 
-func (rn *Network) MakeEndWithSL(endname interface{}, sl *simulation.Simulation) *ClientEnd {
+func (rn *Network) MakeEndWithSL(endname interface{}, sl chan Common.Msg) *ClientEnd {
 	rn.mu.Lock()
 	defer rn.mu.Unlock()
 
@@ -454,10 +456,10 @@ type Service struct {
 	rcvr    reflect.Value
 	typ     reflect.Type
 	methods map[string]reflect.Method
-	sl       *simulation.Simulation
+	sl       chan Common.Msg
 }
 
-func MakeServiceWithSL(rcvr interface{}, sl *simulation.Simulation) *Service {
+func MakeServiceWithSL(rcvr interface{}, sl chan Common.Msg) *Service {
 	svc := &Service{}
 	svc.typ = reflect.TypeOf(rcvr)
 	svc.rcvr = reflect.ValueOf(rcvr)

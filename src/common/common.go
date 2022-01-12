@@ -1,5 +1,6 @@
 package Common
 
+
 const (
 	OK       = "OK"
 	ErrNoKey = "ErrNoKey"
@@ -99,4 +100,20 @@ type AppendEntriesReply struct {
 	Term      int
 	Success   bool
 	NextIndex int
+}
+
+type Msg struct {
+	Send bool //true: send out, check false: receive, handle
+	Request bool //true: request, false: reply
+	Meth string
+	Args interface{}
+	Reply interface{}
+}
+
+
+func SendMsg(ch chan Msg, send bool, request bool, meth string, args interface{}, reply interface{}) {
+	if ch == nil {
+		return
+	}
+	ch <- Msg{Send: send, Request: request, Meth: meth, Args: args, Reply: reply}
 }

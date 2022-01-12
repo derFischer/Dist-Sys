@@ -7,7 +7,6 @@ import (
 	"labrpc"
 	"log"
 	"raft"
-	"simulation"
 	"sync"
 )
 
@@ -42,7 +41,7 @@ type KVServer struct {
 	history map[int64]Common.Recent
 
 	maxraftstate int // snapshot if log grows this big
-	sl *simulation.Simulation
+	sl chan Common.Msg
 
 	// Your definitions here.
 }
@@ -67,11 +66,12 @@ func (kv *KVServer) isUpToDate(ClientId int64, ReqId int) bool {
 
 func (kv *KVServer) Get(args *Common.GetArgs, reply *Common.GetReply) {
 	//fmt.Printf("server %d receive a GET RPC %+v\n", kv.me, args)
-	defer kv.sl.CheckReplyMessage("KVServer.Get", args, reply)
-	if kv.sl != nil {
-		kv.sl.HandleRequestMessage("KVServer.Get", args)
-	}
-
+	//defer kv.sl.CheckReplyMessage("KVServer.Get", args, reply)
+	defer Common.SendMsg(kv.sl, true, false, "KVServer.Get", args, reply)
+	//if kv.sl != nil {
+	//	kv.sl.HandleRequestMessage("KVServer.Get", args)
+	//}
+	Common.SendMsg(kv.sl, false, true, "KVServer.Get", args, reply)
 	if !kv.isUpToDate(args.ClientId, args.ReqId) {
 		tmp := kv.history[args.ClientId]
 		if args.ReqId == tmp.ReqId {
@@ -166,10 +166,12 @@ func (kv *KVServer) apply(entry Common.Op, index int) {
 func (kv *KVServer) PutAppend(args *Common.PutAppendArgs, reply *Common.PutAppendReply) {
 	// Your code here.
 	//fmt.Printf("server %d receive a PUTAPPEND RPC %+v local highest req id %d \n", kv.me, args, kv.history[args.ClientId].ReqId)
-	defer kv.sl.CheckReplyMessage("KVServer.PutAppend", args, reply)
-	if kv.sl != nil {
-		kv.sl.HandleRequestMessage("KVServer.PutAppend", args)
-	}
+	//defer kv.sl.CheckReplyMessage("KVServer.PutAppend", args, reply)
+	defer Common.SendMsg(kv.sl, true, false, "KVServer.PutAppend", args, reply)
+	//if kv.sl != nil {
+	//	kv.sl.HandleRequestMessage("KVServer.PutAppend", args)
+	//}
+	Common.SendMsg(kv.sl, false, true, "KVServer.PutAppend", args, reply)
 
 	if !kv.isUpToDate(args.ClientId, args.ReqId) {
 		reply.WrongLeader = false
@@ -242,7 +244,7 @@ func (kv *KVServer) UnblockElec()  {
 // StartKVServer() must return quickly, so it should start goroutines
 // for any long-running work.
 //
-func StartKVServerWithSL(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int, sl *simulation.Simulation) *KVServer {
+func StartKVServerWithSL(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int, sl chan Common.Msg) *KVServer {
 	labgob.Register(Common.Op{})
 
 	kv := new(KVServer)

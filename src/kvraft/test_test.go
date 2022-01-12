@@ -426,6 +426,7 @@ func GenericTestLinearizability(t *testing.T, part string, nclients int, nserver
 func TestReconfig(t *testing.T) {
 	const nservers = 5
 	cfg := make_config(t, nservers, false, -1)
+	t.Logf("make config end")
 	cfg.UnblockElec(0)
 
 	leader, leaderId := cfg.LegalLeader()

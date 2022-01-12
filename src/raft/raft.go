@@ -27,7 +27,6 @@ import (
 	"bytes"
 	"labgob"
 	"math/rand"
-	"simulation"
 	"sort"
 )
 
@@ -98,7 +97,7 @@ type Raft struct {
 	ApplyCh chan ApplyMsg
 
 	Process bool
-	sl *simulation.Simulation
+	sl chan Common.Msg
 
 	//control election
 	block_elec bool
@@ -270,15 +269,16 @@ func (rf *Raft) readSnapshot(data []byte) {
 // example RequestVote RPC handler.
 //
 func (rf *Raft) RequestVote(args *Common.RequestVoteArgs, reply *Common.RequestVoteReply) {
-	r := simulation.RequestVoteReply{}
-	if rf.sl != nil {
-		r = rf.sl.HandleRequestMessage("Raft.RequestVote", args).(simulation.RequestVoteReply)
-	}
-
+	//r := simulation.RequestVoteReply{}
+	//if rf.sl != nil {
+	//	r = rf.sl.HandleRequestMessage("Raft.RequestVote", args).(simulation.RequestVoteReply)
+	//}
+	//fmt.Printf("server %d receives request vote from server %d\n", rf.me, args.From)
 	rf.mu.Lock()
+	defer Common.SendMsg(rf.sl, false, true, "Raft.RequestVote", args, reply)
 	defer rf.mu.Unlock()
 	defer rf.persist()
-	defer rf.sl.CheckReplyMessage("Raft.RequestVote", reply, r)
+	//defer rf.sl.CheckReplyMessage("Raft.RequestVote", reply, r)
 
 	reply.From = rf.me
 	if args.Term < rf.CurrentTerm {
@@ -371,15 +371,16 @@ func (rf *Raft) testStaleRPC(argsPrevLogIndex int, argsPrevLogTerm int, entries 
 func (rf *Raft) AppendEntries(args *Common.AppendEntriesArgs, reply *Common.AppendEntriesReply) {
 	//fmt.Printf("server %d : APPENDENTRIES from server %d local term %d args term %d args.prevlogindex %d, commitindex %d leader commitindex %d last index %d entries: %+v\n", rf.me, args.LeaderId, rf.CurrentTerm, args.Term, args.PrevLogIndex, rf.CommitIndex, args.LeaderCommit, rf.getLastCommandIndex(), args.Entries)
 	//////fmt.Println("enter: AppendEntries");
-	r := simulation.AppendEntriesReply{}
-	if rf.sl != nil {
-		r = rf.sl.HandleRequestMessage("Raft.AppendEntries", args).(simulation.AppendEntriesReply)
-	}
+	//r := simulation.AppendEntriesReply{}
+	//if rf.sl != nil {
+	//	r = rf.sl.HandleRequestMessage("Raft.AppendEntries", args).(simulation.AppendEntriesReply)
+	//}
 
 	reply.Success = false
 	reply.From = rf.me
 	rf.mu.Lock()
-	defer rf.sl.CheckReplyMessage("Raft.AppendEntries", reply, r)
+	//defer rf.sl.CheckReplyMessage("Raft.AppendEntries", reply, r)
+	defer Common.SendMsg(rf.sl, false, true, "Raft.AppendEntries", args, reply)
 	defer rf.mu.Unlock()
 	defer rf.persist()
 	//rf.checkIndx()
@@ -602,7 +603,7 @@ func (rf *Raft) sendSingleRequestVote(server int, args *Common.RequestVoteArgs, 
 		return
 	}
 	var reply Common.RequestVoteReply
-	//////fmt.Printf("server %d wants to send REQUEST VOTE RPC to server %d with args %+v\n", rf.me, server, args)
+	//fmt.Printf("server %d wants to send REQUEST VOTE RPC to server %d with args %+v\n", rf.me, server, args)
 	if rf.getState() == Candidate && rf.getTerm() == term && rf.sendRequestVote(server, args, &reply) {
 		//////fmt.Printf("server %d receives the reply from server %d success %t\n", rf.me, server, reply.VoteGranted)
 		rf.mu.Lock()
@@ -971,7 +972,7 @@ func (rf *Raft) checkIndx() {
 }
 
 func MakeWithSL(peers []*labrpc.ClientEnd, me int,
-	persister *Persister, applyCh chan ApplyMsg, sl *simulation.Simulation) *Raft {
+	persister *Persister, applyCh chan ApplyMsg, sl chan Common.Msg) *Raft {
 	rf := &Raft{}
 	rf.peers = peers
 	rf.persister = persister
@@ -1156,7 +1157,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 					msg.CommandValid = true
 					msg.Command = rf.Log[i].Command
 					msg.CommandIndex = rf.Log[i].CommandIndex
-					applyCh <- msg
+					rf.ApplyCh <- msg
 					//////fmt.Printf("server %d commit the command at index %d command: %+v \n", rf.me, rf.calculateRealIndex(i), rf.Log[i])
 					rf.LastApplied++
 				}

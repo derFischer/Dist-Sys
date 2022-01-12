@@ -297,12 +297,12 @@ func (cfg *config) StartServer(i int) {
 		peers[j] = j
 	}
 
-	sl := simulation.NewSL(i, peers)
+	sl := simulation.StartSimulationServer(i, peers)
 	cfg.sls[i] = sl
 	// a fresh set of ClientEnds.
 	ends := make([]*labrpc.ClientEnd, cfg.n)
 	for j := 0; j < cfg.n; j++ {
-		ends[j] = cfg.net.MakeEndWithSL(cfg.endnames[i][j], sl)
+		ends[j] = cfg.net.MakeEndWithSL(cfg.endnames[i][j], sl.MsgCh)
 		cfg.net.Connect(cfg.endnames[i][j], j)
 	}
 
@@ -318,10 +318,10 @@ func (cfg *config) StartServer(i int) {
 	}
 	cfg.mu.Unlock()
 
-	cfg.kvservers[i] = StartKVServerWithSL(ends, i, cfg.saved[i], cfg.maxraftstate, sl)
+	cfg.kvservers[i] = StartKVServerWithSL(ends, i, cfg.saved[i], cfg.maxraftstate, sl.MsgCh)
 
-	kvsvc := labrpc.MakeServiceWithSL(cfg.kvservers[i], sl)
-	rfsvc := labrpc.MakeServiceWithSL(cfg.kvservers[i].rf, sl)
+	kvsvc := labrpc.MakeServiceWithSL(cfg.kvservers[i], sl.MsgCh)
+	rfsvc := labrpc.MakeServiceWithSL(cfg.kvservers[i].rf, sl.MsgCh)
 	srv := labrpc.MakeServer()
 	srv.AddService(kvsvc)
 	srv.AddService(rfsvc)
