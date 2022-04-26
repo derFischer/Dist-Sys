@@ -1,0 +1,144 @@
+############# the mininum equivalence conditions for requestVoteReqMsg and requestVoteReqMsg are:
+
+generating conditions: ...
+
+checking conditions: ...
+
+deduplicate: ...
+
+case 1:
+
+Term, Term UNEQUAL 
+
+or case 2:
+
+From, From EQUAL 
+
+############# the mininum equivalence conditions for requestVoteReqMsg and requestVoteResponseMsg are:
+
+generating conditions: ...
+
+checking conditions: ...
+
+deduplicate: ...
+
+case 1:
+
+no condition required
+
+############# the mininum equivalence conditions for requestVoteReqMsg and appendEntriesReqMsg are:
+
+generating conditions: ...
+
+checking conditions: ...
+
+deduplicate: ...
+
+############# the mininum equivalence conditions for requestVoteReqMsg and appendEntriesResponseMsg are:
+
+generating conditions: ...
+
+checking conditions: ...
+
+deduplicate: ...
+
+case 1:
+
+no condition required
+
+############# the mininum equivalence conditions for requestVoteResponseMsg and requestVoteResponseMsg are:
+
+generating conditions: ...
+
+checking conditions: ...
+
+deduplicate: ...
+
+case 1:
+
+no condition required
+
+############# the mininum equivalence conditions for requestVoteResponseMsg and appendEntriesReqMsg are:
+
+generating conditions: ...
+
+checking conditions: ...
+
+deduplicate: ...
+
+case 1:
+
+Term, Term EQUAL 
+
+############# the mininum equivalence conditions for requestVoteResponseMsg and appendEntriesResponseMsg are:
+
+generating conditions: ...
+
+checking conditions: ...
+
+deduplicate: ...
+
+case 1:
+
+no condition required
+
+############# the mininum equivalence conditions for appendEntriesReqMsg and appendEntriesReqMsg are:
+
+generating conditions: ...
+
+checking conditions: ...
+
+deduplicate: ...
+
+case 1:
+
+PrevLogTerm, PrevLogTerm EQUAL 
+
+CommitIndex, CommitIndex EQUAL 
+
+PrevLogIndex, PrevLogIndex EQUAL 
+
+Term, Term UNEQUAL 
+
+or case 2:
+
+Entry, Entry EQUAL 
+
+Term, Term EQUAL 
+
+PrevLogIndex, PrevLogIndex EQUAL 
+
+or case 3:
+
+PrevLogTerm, PrevLogTerm EQUAL 
+
+CommitIndex, CommitIndex EQUAL 
+
+Entry, Entry EQUAL 
+
+PrevLogIndex, PrevLogIndex EQUAL 
+
+############# the mininum equivalence conditions for appendEntriesReqMsg and appendEntriesResponseMsg are:
+
+generating conditions: ...
+
+checking conditions: ...
+
+deduplicate: ...
+
+case 1:
+
+Term, Term EQUAL 
+
+############# the mininum equivalence conditions for appendEntriesResponseMsg and appendEntriesResponseMsg are:
+
+generating conditions: ...
+
+checking conditions: ...
+
+deduplicate: ...
+
+case 1:
+
+no condition required
+
